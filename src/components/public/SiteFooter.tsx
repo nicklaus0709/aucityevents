@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { EventRow } from '@/lib/types';
+import PoweredBy from './PoweredBy';
 
 export default function SiteFooter({ event }: { event: EventRow }) {
   const base = `/e/${event.slug}`;
@@ -42,7 +43,10 @@ export default function SiteFooter({ event }: { event: EventRow }) {
           <Link href="/" className="mt-5 inline-block text-sm font-semibold text-white underline-offset-4 hover:underline">Ver otros eventos →</Link>
         </div>
       </div>
-      <div className="border-t border-white/10 py-5 text-center text-xs text-white/60">© {new Date().getFullYear()} Municipalidad de Capioví · Misiones, Argentina</div>
+      <div className="space-y-4 border-t border-white/10 px-4 py-6 text-center">
+        <p className="text-xs text-white/60">© {new Date().getFullYear()} Municipalidad de Capioví · {event.name}. Todos los derechos reservados.</p>
+        <PoweredBy />
+      </div>
     </footer>
   );
 }

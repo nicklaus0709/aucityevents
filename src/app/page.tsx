@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { listPublishedEvents } from '@/lib/data';
+import PoweredBy from '@/components/public/PoweredBy';
 import { formatDate, hexToRgbTriplet } from '@/lib/utils';
 
 export const revalidate = 60;
@@ -41,8 +42,9 @@ export default async function Home() {
           </ul>
         )}
       </section>
-      <footer className="border-t border-stone-200 py-8 text-center text-sm text-stone-500">
-        © {new Date().getFullYear()} Municipalidad de Capioví · <Link href="/admin" className="hover:underline">Acceso administración</Link>
+      <footer className="space-y-4 border-t border-stone-200 px-4 py-8 text-center text-sm text-stone-500">
+        <p>© {new Date().getFullYear()} Municipalidad de Capioví. Todos los derechos reservados. · <Link href="/admin" className="hover:underline">Acceso administración</Link></p>
+        <PoweredBy dark={false} />
       </footer>
     </main>
   );
