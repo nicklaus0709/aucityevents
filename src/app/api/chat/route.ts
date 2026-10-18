@@ -17,8 +17,8 @@ export async function POST(req: Request) {
   const { slug, message, history } = parsed.data;
 
   if (DEMO) {
-    const sch = demo.content.schedule.map((s) => `- ${formatDateTime(s.starts_at)}: ${s.artist}`).join('\n');
-    const st = demo.content.stalls.map((s) => `- Puesto ${s.number} "${s.name}": ${s.products.join(', ')}`).join('\n');
+    const sch = (demo.content[demo.events.find((e) => e.slug === slug)?.id ?? ''] ?? demo.content['demo-navidad']).schedule.map((s) => `- ${formatDateTime(s.starts_at)}: ${s.artist}`).join('\n');
+    const st = (demo.content[demo.events.find((e) => e.slug === slug)?.id ?? ''] ?? demo.content['demo-navidad']).stalls.map((s) => `- Puesto ${s.number} "${s.name}": ${s.products.join(', ')}`).join('\n');
     return json({ reply: ruleBasedReply(message, sch, st, null) });
   }
   if (!(await rateLimit(`chat:${getClientIp(req.headers)}`, 20, 600))) {

@@ -24,7 +24,7 @@ export async function listPublishedEvents(): Promise<EventRow[]> {
 }
 
 export async function getEventContent(eventId: string) {
-  if (DEMO) return eventId === 'demo-navidad' ? demo.content : { gallery: [], schedule: [], stalls: [], ads: [], bonos: [] };
+  if (DEMO) return demo.content[eventId] ?? { gallery: [], schedule: [], stalls: [], ads: [], bonos: [] };
   const db = createPublicClient();
   const [gallery, schedule, stalls, ads, bonos] = await Promise.all([
     db.from('gallery_images').select('id,image_url,caption').eq('event_id', eventId).order('sort_order').order('created_at'),

@@ -2,17 +2,47 @@ import Link from 'next/link';
 import type { EventRow } from '@/lib/types';
 
 export default function SiteFooter({ event }: { event: EventRow }) {
+  const base = `/e/${event.slug}`;
+  const tel = event.phone?.replace(/[^\d+]/g, '');
+  const social = [
+    { label: 'Instagram', url: event.instagram_url }, { label: 'Facebook', url: event.facebook_url }, { label: 'YouTube', url: event.youtube_url },
+  ].filter((s) => s.url);
+
   return (
-    <footer className="bg-stone-900 text-stone-300">
-      <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 py-8 text-sm sm:flex-row sm:px-6">
-        <p>© {new Date().getFullYear()} Municipalidad de Capioví · {event.name}</p>
-        <div className="flex gap-5">
-          {event.instagram_url && <a href={event.instagram_url} target="_blank" rel="noopener noreferrer" className="hover:text-white">Instagram</a>}
-          {event.facebook_url && <a href={event.facebook_url} target="_blank" rel="noopener noreferrer" className="hover:text-white">Facebook</a>}
-          {event.whatsapp && <a href={`https://wa.me/${event.whatsapp}`} target="_blank" rel="noopener noreferrer" className="hover:text-white">WhatsApp</a>}
-          <Link href="/" className="hover:text-white">Otros eventos</Link>
+    <footer className="bg-deep bg-festive text-white/80">
+      <div className="mx-auto grid max-w-6xl gap-10 px-4 py-14 sm:px-6 md:grid-cols-3">
+        <div>
+          <p className="font-display text-2xl font-bold text-white">{event.name}</p>
+          {event.tagline && <p className="mt-3 text-sm leading-relaxed">{event.tagline}</p>}
+          {social.length > 0 && (
+            <ul className="mt-5 flex flex-wrap gap-2">
+              {social.map((s) => <li key={s.label}><a href={s.url!} target="_blank" rel="noopener noreferrer" className="rounded-full border border-white/25 px-4 py-1.5 text-sm font-semibold text-white transition hover:bg-white/15">{s.label}</a></li>)}
+            </ul>
+          )}
+        </div>
+        <nav aria-label="Pie de página">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-white">Explorá</p>
+          <ul className="mt-4 space-y-2 text-sm">
+            <li><Link href={base} className="hover:text-white">Inicio</Link></li>
+            <li><Link href={`${base}/eventos`} className="hover:text-white">Programación</Link></li>
+            <li><Link href={`${base}/gastronomia`} className="hover:text-white">Gastronomía</Link></li>
+            <li><Link href={`${base}/publicidad`} className="hover:text-white">Comercios que acompañan</Link></li>
+            {event.bonos_enabled && <li><Link href={`${base}/bonos`} className="hover:text-white">Bonos de colaboración</Link></li>}
+            <li><Link href={`${base}/contacto`} className="hover:text-white">Contacto</Link></li>
+          </ul>
+        </nav>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-white">Contacto</p>
+          <ul className="mt-4 space-y-2 text-sm">
+            {event.location && <li>📍 {event.location}</li>}
+            {event.phone && <li>📞 <a href={`tel:${tel}`} className="hover:text-white">{event.phone}</a></li>}
+            {event.whatsapp && <li>💬 <a href={`https://wa.me/${event.whatsapp}`} target="_blank" rel="noopener noreferrer" className="hover:text-white">WhatsApp de la Municipalidad</a></li>}
+            {event.email && <li>✉️ <a href={`mailto:${event.email}`} className="hover:text-white">{event.email}</a></li>}
+          </ul>
+          <Link href="/" className="mt-5 inline-block text-sm font-semibold text-white underline-offset-4 hover:underline">Ver otros eventos →</Link>
         </div>
       </div>
+      <div className="border-t border-white/10 py-5 text-center text-xs text-white/60">© {new Date().getFullYear()} Municipalidad de Capioví · Misiones, Argentina</div>
     </footer>
   );
 }

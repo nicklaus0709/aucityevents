@@ -1,6 +1,8 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { getEventContent, loadEvent } from '@/lib/data';
+import PageHero from '@/components/public/PageHero';
 
 export const revalidate = 60;
 export const metadata: Metadata = { title: 'Comercios que acompañan' };
@@ -16,27 +18,32 @@ export default async function AdsPage({ params }: { params: Promise<{ slug: stri
   const { ads } = await getEventContent(event.id);
 
   return (
-    <section className="section">
-      <h1 className="text-3xl">Comercios que acompañan</h1>
-      <p className="mt-2 text-stone-600">Gracias a ellos este evento es posible. ¡Visitalos!</p>
-      {ads.length === 0 && <p className="mt-6 text-stone-500">Próximamente.</p>}
-      <ul className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {ads.map((a) => {
-          const href = safeUrl(a.link_url);
-          const body = (
-            <>
-              <img src={a.image_url} alt={`Publicidad de ${a.business_name}`} loading="lazy" className="h-44 w-full rounded-lg object-cover" />
-              <h2 className="mt-3 text-lg">{a.business_name}</h2>
-              {a.description && <p className="text-sm text-stone-600">{a.description}</p>}
-            </>
-          );
-          return (
-            <li key={a.id} className="card">
-              {href ? <a href={href} target="_blank" rel="noopener noreferrer sponsored" className="block">{body}</a> : body}
-            </li>
-          );
-        })}
-      </ul>
-    </section>
+    <>
+      <PageHero eyebrow={event.name} title="Comercios que acompañan" subtitle="Gracias a ellos este evento es posible. ¡Visitalos!" image={event.hero_image} />
+      <section className="section">
+        {ads.length === 0 && <p className="text-stone-500">Próximamente.</p>}
+        <ul className="grid gap-6 sm:grid-cols-2">
+          {ads.map((a) => {
+            const href = safeUrl(a.link_url);
+            const body = (
+              <>
+                <img src={a.image_url} alt={`Publicidad de ${a.business_name}`} loading="lazy" className="aspect-[3/1] w-full object-cover" />
+                <div className="p-5"><h2 className="text-lg">{a.business_name}</h2>{a.description && <p className="text-sm text-stone-600">{a.description}</p>}</div>
+              </>
+            );
+            return (
+              <li key={a.id} className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-stone-200 transition hover:-translate-y-1 hover:shadow-xl">
+                {href ? <a href={href} target="_blank" rel="noopener noreferrer sponsored" className="block">{body}</a> : body}
+              </li>
+            );
+          })}
+        </ul>
+        <div className="mt-12 rounded-2xl bg-white p-8 text-center ring-1 ring-stone-200">
+          <h2 className="text-2xl">¿Tenés un comercio?</h2>
+          <p className="mt-2 text-stone-600">Sumá tu publicidad al evento y llegá a toda la comunidad.</p>
+          <Link href={`/e/${slug}/contacto`} className="btn mt-5">Quiero publicitar</Link>
+        </div>
+      </section>
+    </>
   );
 }
