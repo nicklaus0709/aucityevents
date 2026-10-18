@@ -97,7 +97,7 @@ export async function saveRow(fd: FormData) {
         const up = await uploadImage(supabase, eventId, file);
         if (up.error) back(path, 'error', up.error);
         payload[f.name] = up.url;
-      } else if (current && current.startsWith(process.env.NEXT_PUBLIC_SUPABASE_URL!)) {
+      } else if (current && (current.startsWith(process.env.NEXT_PUBLIC_SUPABASE_URL!) || current.startsWith('/demo/'))) {
         payload[f.name] = current;
       } else if (f.required) {
         back(path, 'error', `${f.label} es obligatoria`);

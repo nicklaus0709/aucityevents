@@ -42,3 +42,14 @@ Sin configuración responde con reglas simples sobre grilla/gastronomía/bonos. 
 - Captcha (Cloudflare Turnstile) en el formulario de contacto si aparece spam.
 - Envío de email con el comprobante del bono (Resend) y rol "cajero" que solo canjea bonos.
 - `npm audit` reporta un aviso de PostCSS dentro de Next 15 (solo en tiempo de build); se resuelve actualizando a Next 16.
+
+## Probar el panel admin y publicar (sin Mercado Pago)
+
+1. **Supabase** (gratis): crear proyecto → SQL Editor → ejecutar `supabase/migrations/0001_init.sql` y después `supabase/seed.sql` (carga los 3 eventos de ejemplo con sus fotos).
+2. **Usuario admin**: Authentication → Users → *Add user* (email + contraseña, "Auto Confirm User") y en el SQL Editor:
+   `update public.profiles set role = 'super_admin' where email = 'tu@correo.com';`
+3. **Local**: crear `.env.local` con `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` y `NEXT_PUBLIC_SITE_URL=http://localhost:3000` → `npm run dev` → http://localhost:3000/admin.
+4. **Vercel**: importar el repo y cargar esas mismas 4 variables (con `NEXT_PUBLIC_SITE_URL` = la URL de Vercel). Sin `MP_ACCESS_TOKEN` la compra de bonos queda como "Muy pronto".
+5. Supabase → Authentication → URL Configuration: Site URL = la URL de Vercel.
+
+Para cambiar los comercios de ejemplo por reales: Panel → evento → Publicidad → subir la foto de cada comercio (JPG/PNG/WebP, máx. 5 MB) y borrar los banners de ejemplo.
