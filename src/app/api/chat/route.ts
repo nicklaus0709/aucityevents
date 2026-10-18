@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DEMO, demo } from '@/lib/demo-data';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getClientIp, isSameOrigin, json, rateLimit } from '@/lib/security';
 import { formatDateTime } from '@/lib/utils';
@@ -15,6 +16,11 @@ export async function POST(req: Request) {
   if (!parsed.success) return json({ error: 'Mensaje inválido' }, 400);
   const { slug, message, history } = parsed.data;
 
+  if (DEMO) {
+    const sch = demo.content.schedule.map((s) => `- ${formatDateTime(s.starts_at)}: ${s.artist}`).join('\n');
+    const st = demo.content.stalls.map((s) => `- Puesto ${s.number} "${s.name}": ${s.products.join(', ')}`).join('\n');
+    return json({ reply: ruleBasedReply(message, sch, st, null) });
+  }
   if (!(await rateLimit(`chat:${getClientIp(req.headers)}`, 20, 600))) {
     return json({ reply: 'Estás escribiendo muy rápido, probá en unos minutos 🙂' }, 429);
   }

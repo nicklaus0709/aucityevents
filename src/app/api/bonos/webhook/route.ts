@@ -27,6 +27,7 @@ function validSignature(req: Request, dataId: string) {
 }
 
 export async function POST(req: Request) {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return new Response('demo', { status: 503 });
   const url = new URL(req.url);
   const body = await req.json().catch(() => ({}));
   const type = url.searchParams.get('type') ?? url.searchParams.get('topic') ?? body?.type;

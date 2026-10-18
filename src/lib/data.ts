@@ -1,9 +1,11 @@
 import { cache } from 'react';
+import { DEMO, demo } from '@/lib/demo-data';
 import { createPublicClient } from '@/lib/supabase/public';
 import type { Ad, BonoType, EventRow, FoodStall, GalleryImage, ScheduleItem } from '@/lib/types';
 
 /** Lectura pública (RLS: solo eventos publicados). Nunca rompe el render si falla. */
 export async function getEventBySlug(slug: string): Promise<EventRow | null> {
+  if (DEMO) return demo.events.find((e) => e.slug === slug) ?? null;
   try {
     const { data } = await createPublicClient().from('events').select('*').eq('slug', slug).eq('is_published', true).maybeSingle();
     return (data as EventRow) ?? null;
@@ -14,6 +16,7 @@ export async function getEventBySlug(slug: string): Promise<EventRow | null> {
 export const loadEvent = cache(getEventBySlug);
 
 export async function listPublishedEvents(): Promise<EventRow[]> {
+  if (DEMO) return demo.events;
   try {
     const { data } = await createPublicClient().from('events').select('*').eq('is_published', true).order('start_date', { ascending: true });
     return (data as EventRow[]) ?? [];
@@ -21,6 +24,7 @@ export async function listPublishedEvents(): Promise<EventRow[]> {
 }
 
 export async function getEventContent(eventId: string) {
+  if (DEMO) return eventId === 'demo-navidad' ? demo.content : { gallery: [], schedule: [], stalls: [], ads: [], bonos: [] };
   const db = createPublicClient();
   const [gallery, schedule, stalls, ads, bonos] = await Promise.all([
     db.from('gallery_images').select('id,image_url,caption').eq('event_id', eventId).order('sort_order').order('created_at'),

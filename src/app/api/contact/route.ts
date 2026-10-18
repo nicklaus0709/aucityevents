@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DEMO } from '@/lib/demo-data';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getClientIp, isSameOrigin, json, rateLimit } from '@/lib/security';
 
@@ -15,6 +16,7 @@ const schema = z.object({
 export async function POST(req: Request) {
   if (!isSameOrigin(req.headers)) return json({ error: 'Origen no permitido' }, 403);
 
+  if (DEMO) return json({ error: 'Modo demo: el formulario está deshabilitado' }, 503);
   const parsed = schema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return json({ error: 'Revisá los datos del formulario' }, 400);
   const d = parsed.data;
