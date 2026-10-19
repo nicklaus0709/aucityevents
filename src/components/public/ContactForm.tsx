@@ -1,6 +1,6 @@
-'use client';
-
 import { useState } from 'react';
+import { z } from 'zod';
+import { sendContactMessage } from '@/lib/api';
 
 const TYPES = [
   { v: 'artista', l: 'Quiero participar como artista' },
@@ -10,23 +10,33 @@ const TYPES = [
   { v: 'otro', l: 'Otro' },
 ];
 
-export default function ContactForm({ slug }: { slug: string }) {
+const schema = z.object({
+  name: z.string().trim().min(2).max(100),
+  email: z.string().trim().email().max(150),
+  phone: z.string().trim().max(30).optional(),
+  type: z.enum(['artista', 'gastronomico', 'comercio', 'consulta', 'otro']),
+  message: z.string().trim().min(10).max(2000),
+  website: z.string().max(0).optional(), // honeypot: los bots lo completan
+});
+
+export default function ContactForm({ eventId }: { eventId: string }) {
   const [state, setState] = useState<'idle' | 'sending' | 'ok' | 'error'>('idle');
   const [error, setError] = useState('');
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setState('sending');
     const form = e.currentTarget;
-    const data = Object.fromEntries(new FormData(form));
+    const parsed = schema.safeParse(Object.fromEntries(new FormData(form)));
+    if (!parsed.success) { setError('Revisá los datos del formulario'); setState('error'); return; }
+    if (parsed.data.website) { setState('ok'); return; } // bot: se descarta en silencio
+    setState('sending');
     try {
-      const res = await fetch('/api/contact', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...data, slug }) });
-      const out = await res.json();
-      if (!res.ok) throw new Error(out.error);
+      const { website: _w, ...data } = parsed.data;
+      await sendContactMessage({ ...data, event_id: eventId });
       form.reset();
       setState('ok');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al enviar');
+      setError(err instanceof Error ? err.message : 'No pudimos enviar tu mensaje');
       setState('error');
     }
   }
@@ -34,7 +44,7 @@ export default function ContactForm({ slug }: { slug: string }) {
   if (state === 'ok') return <div className="card border-green-300 bg-green-50 text-green-800">¡Gracias! Recibimos tu mensaje y la Municipalidad se va a comunicar con vos.</div>;
 
   return (
-    <form onSubmit={onSubmit} className="card space-y-4">
+    <form onSubmit={onSubmit} className="card space-y-4 !p-6">
       <div>
         <label className="label" htmlFor="type">Motivo</label>
         <select id="type" name="type" className="input" required>{TYPES.map((t) => <option key={t.v} value={t.v}>{t.l}</option>)}</select>
@@ -45,7 +55,6 @@ export default function ContactForm({ slug }: { slug: string }) {
       </div>
       <div><label className="label" htmlFor="phone">Teléfono / WhatsApp (opcional)</label><input id="phone" name="phone" type="tel" className="input" maxLength={30} autoComplete="tel" /></div>
       <div><label className="label" htmlFor="message">Mensaje</label><textarea id="message" name="message" rows={5} className="input" required minLength={10} maxLength={2000} /></div>
-      {/* Honeypot anti-bots: oculto para personas */}
       <input name="website" tabIndex={-1} autoComplete="off" aria-hidden="true" className="absolute left-[-9999px] h-0 w-0 opacity-0" />
       {state === 'error' && <p className="text-sm text-red-600" role="alert">{error}</p>}
       <button className="btn w-full sm:w-auto" disabled={state === 'sending'}>{state === 'sending' ? 'Enviando…' : 'Enviar mensaje'}</button>

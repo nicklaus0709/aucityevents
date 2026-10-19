@@ -1,7 +1,7 @@
 import type { Field } from '@/lib/admin-config';
 import { toInputDateTime } from '@/lib/utils';
 
-/** Renderiza un campo de formulario según su tipo (sin estado: funciona en Server Components). */
+/** Renderiza un campo de formulario según su tipo (sin estado propio). */
 export default function FieldInput({ field, value, idPrefix }: { field: Field; value: unknown; idPrefix: string }) {
   const id = `${idPrefix}-${field.name}`;
   const v = value ?? field.default ?? '';

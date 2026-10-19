@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { Link } from 'react-router-dom';
 import type { EventRow } from '@/lib/types';
 import PoweredBy from './PoweredBy';
 
@@ -24,12 +24,12 @@ export default function SiteFooter({ event }: { event: EventRow }) {
         <nav aria-label="Pie de página">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-white">Explorá</p>
           <ul className="mt-4 space-y-2 text-sm">
-            <li><Link href={base} className="hover:text-white">Inicio</Link></li>
-            <li><Link href={`${base}/eventos`} className="hover:text-white">Programación</Link></li>
-            <li><Link href={`${base}/gastronomia`} className="hover:text-white">Gastronomía</Link></li>
-            <li><Link href={`${base}/publicidad`} className="hover:text-white">Comercios que acompañan</Link></li>
-            {event.bonos_enabled && <li><Link href={`${base}/bonos`} className="hover:text-white">Bonos de colaboración</Link></li>}
-            <li><Link href={`${base}/contacto`} className="hover:text-white">Contacto</Link></li>
+            <li><Link to={base} className="hover:text-white">Inicio</Link></li>
+            <li><Link to={`${base}/eventos`} className="hover:text-white">Programación</Link></li>
+            <li><Link to={`${base}/gastronomia`} className="hover:text-white">Gastronomía</Link></li>
+            <li><Link to={`${base}/publicidad`} className="hover:text-white">Comercios que acompañan</Link></li>
+            {event.bonos_enabled && <li><Link to={`${base}/bonos`} className="hover:text-white">Bonos de colaboración</Link></li>}
+            <li><Link to={`${base}/contacto`} className="hover:text-white">Contacto</Link></li>
           </ul>
         </nav>
         <div>
@@ -40,7 +40,7 @@ export default function SiteFooter({ event }: { event: EventRow }) {
             {event.whatsapp && <li>💬 <a href={`https://wa.me/${event.whatsapp}`} target="_blank" rel="noopener noreferrer" className="hover:text-white">WhatsApp de la Municipalidad</a></li>}
             {event.email && <li>✉️ <a href={`mailto:${event.email}`} className="hover:text-white">{event.email}</a></li>}
           </ul>
-          <Link href="/" className="mt-5 inline-block text-sm font-semibold text-white underline-offset-4 hover:underline">Ver otros eventos →</Link>
+          <Link to="/" className="mt-5 inline-block text-sm font-semibold text-white underline-offset-4 hover:underline">Ver otros eventos →</Link>
         </div>
       </div>
       <div className="space-y-4 border-t border-white/10 px-4 py-6 text-center">

@@ -1,0 +1,56 @@
+{
+  "name": "FoodStall",
+  "type": "object",
+  "title": "Puesto gastronómico",
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "number": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "owner": {
+      "type": "string",
+      "maxLength": 120
+    },
+    "products": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 150
+      }
+    },
+    "image_url": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "event_id",
+    "number",
+    "name"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": true,
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

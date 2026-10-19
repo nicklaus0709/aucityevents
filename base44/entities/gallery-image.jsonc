@@ -1,0 +1,43 @@
+{
+  "name": "GalleryImage",
+  "type": "object",
+  "title": "Foto de galería",
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "image_url": {
+      "type": "string"
+    },
+    "caption": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "sort_order": {
+      "type": "integer",
+      "default": 0
+    }
+  },
+  "required": [
+    "event_id",
+    "image_url"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": true,
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

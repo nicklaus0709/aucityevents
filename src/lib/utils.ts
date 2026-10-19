@@ -1,6 +1,7 @@
 export const TZ = 'America/Argentina/Cordoba'; // Misiones: UTC-3
 
-export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/$/, '');
+/** URL pública del sitio (para los QR). Usa el dominio desde el que se abre el panel. */
+export const siteUrl = () => ((import.meta.env.VITE_SITE_URL as string | undefined) || window.location.origin).replace(/\/$/, '');
 
 export function formatDateTime(iso: string) {
   return new Intl.DateTimeFormat('es-AR', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(iso));

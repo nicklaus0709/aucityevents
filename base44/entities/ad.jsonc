@@ -1,0 +1,64 @@
+{
+  "name": "Ad",
+  "type": "object",
+  "title": "Publicidad de comercio",
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "business_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "image_url": {
+      "type": "string"
+    },
+    "link_url": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 300
+    },
+    "is_active": {
+      "type": "boolean",
+      "default": true
+    },
+    "starts_on": {
+      "type": "string",
+      "format": "date"
+    },
+    "ends_on": {
+      "type": "string",
+      "format": "date"
+    },
+    "sort_order": {
+      "type": "integer",
+      "default": 0
+    }
+  },
+  "required": [
+    "event_id",
+    "business_name",
+    "image_url"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": true,
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

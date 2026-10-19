@@ -26,7 +26,7 @@ export interface TableConfig {
 
 /** Lista blanca de tablas editables desde el panel: las acciones del servidor NUNCA aceptan otras. */
 export const TABLES: Record<string, TableConfig> = {
-  events: {
+  Event: {
     scoped: false,
     singular: 'evento',
     order: { column: 'created_at', ascending: true },
@@ -53,7 +53,7 @@ export const TABLES: Record<string, TableConfig> = {
       { name: 'is_published', label: 'Sitio publicado (visible al público)', type: 'checkbox' },
     ],
   },
-  gallery_images: {
+  GalleryImage: {
     scoped: true,
     singular: 'foto',
     order: { column: 'sort_order', ascending: true },
@@ -64,7 +64,7 @@ export const TABLES: Record<string, TableConfig> = {
       { name: 'sort_order', label: 'Orden', type: 'number', integer: true, default: 0 },
     ],
   },
-  schedule_items: {
+  ScheduleItem: {
     scoped: true,
     singular: 'show',
     order: { column: 'starts_at', ascending: true },
@@ -78,7 +78,7 @@ export const TABLES: Record<string, TableConfig> = {
       { name: 'image_url', label: 'Foto', type: 'image' },
     ],
   },
-  food_stalls: {
+  FoodStall: {
     scoped: true,
     singular: 'puesto',
     order: { column: 'number', ascending: true },
@@ -91,7 +91,7 @@ export const TABLES: Record<string, TableConfig> = {
       { name: 'image_url', label: 'Foto', type: 'image' },
     ],
   },
-  ads: {
+  Ad: {
     scoped: true,
     singular: 'publicidad',
     order: { column: 'sort_order', ascending: true },
@@ -107,7 +107,7 @@ export const TABLES: Record<string, TableConfig> = {
       { name: 'is_active', label: 'Activa', type: 'checkbox', default: true },
     ],
   },
-  bono_types: {
+  BonoType: {
     scoped: true,
     singular: 'bono',
     order: { column: 'amount', ascending: true },

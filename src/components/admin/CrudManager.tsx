@@ -1,67 +1,67 @@
+import { useState } from 'react';
 import { TABLES } from '@/lib/admin-config';
-import { requireEventAccess } from '@/lib/auth';
-import { deleteRow, saveRow } from '@/app/admin/actions';
-import FieldInput from './FieldInput';
+import { admin } from '@/lib/api';
+import type { EntityName } from '@/lib/types';
+import { useAsync } from '@/hooks/useAsync';
+import EntityForm from './EntityForm';
 import Flash from './Flash';
+import Spinner from '@/components/Spinner';
 
-function Hidden({ table, eventId, path, id }: { table: string; eventId: string; path: string; id?: string }) {
-  return (
-    <>
-      <input type="hidden" name="_table" value={table} />
-      <input type="hidden" name="_eventId" value={eventId} />
-      <input type="hidden" name="_path" value={path} />
-      {id && <input type="hidden" name="_id" value={id} />}
-    </>
+/** ABM genérico: lista, alta, edición y baja de cualquier entidad registrada en admin-config. */
+export default function CrudManager({ entity, eventId }: { entity: Exclude<EntityName, 'Event'>; eventId: string }) {
+  const cfg = TABLES[entity];
+  const [reload, setReload] = useState(0);
+  const [flash, setFlash] = useState<{ ok?: string; error?: string }>({});
+  const { data: rows, loading, error } = useAsync(
+    () => admin.list(entity, { event_id: eventId }, cfg.order.ascending ? cfg.order.column : `-${cfg.order.column}`),
+    [entity, eventId, reload],
   );
-}
 
-/** ABM genérico: lista, alta, edición y baja de cualquier tabla registrada en admin-config. */
-export default async function CrudManager({ table, eventId, searchParams }: { table: string; eventId: string; searchParams: { error?: string; ok?: string } }) {
-  const cfg = TABLES[table];
-  const path = `/admin/${eventId}/${{ gallery_images: 'galeria', schedule_items: 'programacion', food_stalls: 'gastronomia', ads: 'publicidad', bono_types: 'bonos' }[table]}`;
-  const { supabase } = await requireEventAccess(eventId);
-  const { data: rows } = await supabase.from(table).select('*').eq('event_id', eventId).order(cfg.order.column, { ascending: cfg.order.ascending });
+  async function save(id: string | null, payload: Record<string, unknown>) {
+    if (entity === 'FoodStall') {
+      const dup = (rows ?? []).some((r) => r.number === payload.number && r.id !== id); // Base44 no tiene restricciones únicas
+      if (dup) throw new Error('Ya existe un puesto con ese número');
+    }
+    if (id) await admin.update(entity, id, payload);
+    else await admin.create(entity, { ...payload, event_id: eventId });
+    setFlash({ ok: 'Guardado' });
+    setReload((n) => n + 1);
+  }
+
+  async function remove(id: string) {
+    if (!window.confirm(`¿Eliminar ${cfg.singular}? Esta acción no se puede deshacer.`)) return;
+    try {
+      await admin.remove(entity, id);
+      setFlash({ ok: 'Eliminado' });
+      setReload((n) => n + 1);
+    } catch { setFlash({ error: 'No se pudo eliminar' }); }
+  }
 
   return (
     <div className="space-y-4">
-      <Flash error={searchParams.error} ok={searchParams.ok} />
-
-      <details className="card" open={!rows?.length}>
+      <Flash error={flash.error} ok={flash.ok} />
+      <details className="card" open={!loading && !rows?.length}>
         <summary className="cursor-pointer font-semibold text-brand">+ Agregar {cfg.singular}</summary>
-        <form action={saveRow} className="mt-4 grid gap-4 sm:grid-cols-2">
-          <Hidden table={table} eventId={eventId} path={path} />
-          {cfg.fields.map((f) => (
-            <div key={f.name} className={f.type === 'textarea' || f.type === 'lines' || f.type === 'image' ? 'sm:col-span-2' : ''}>
-              <FieldInput field={f} value={undefined} idPrefix={`new-${table}`} />
-            </div>
-          ))}
-          <div className="sm:col-span-2"><button className="btn">Guardar</button></div>
-        </form>
+        <div className="mt-4"><EntityForm fields={cfg.fields} idPrefix={`new-${entity}`} onSubmit={(p) => save(null, p)} /></div>
       </details>
 
-      <ul className="space-y-3">
-        {rows?.map((row) => (
-          <li key={row.id}>
-            <details className="card">
-              <summary className="cursor-pointer font-medium">{cfg.title(row)}</summary>
-              <form action={saveRow} className="mt-4 grid gap-4 sm:grid-cols-2">
-                <Hidden table={table} eventId={eventId} path={path} id={row.id} />
-                {cfg.fields.map((f) => (
-                  <div key={f.name} className={f.type === 'textarea' || f.type === 'lines' || f.type === 'image' ? 'sm:col-span-2' : ''}>
-                    <FieldInput field={f} value={row[f.name]} idPrefix={row.id} />
-                  </div>
-                ))}
-                <div className="sm:col-span-2"><button className="btn">Guardar cambios</button></div>
-              </form>
-              <form action={deleteRow} className="mt-3 border-t border-stone-200 pt-3">
-                <Hidden table={table} eventId={eventId} path={path} id={row.id} />
-                <button className="btn-danger">Eliminar</button>
-              </form>
-            </details>
-          </li>
-        ))}
-        {rows?.length === 0 && <li className="text-sm text-stone-500">Todavía no hay registros.</li>}
-      </ul>
+      {loading && !rows ? <Spinner /> : error ? <Flash error="No se pudo cargar la lista" /> : (
+        <ul className="space-y-3">
+          {rows?.map((row) => (
+            <li key={row.id}>
+              <details className="card">
+                <summary className="cursor-pointer font-medium">{cfg.title(row)}</summary>
+                <div className="mt-4">
+                  <EntityForm fields={cfg.fields} initial={row} idPrefix={row.id} submitLabel="Guardar cambios" onSubmit={(p) => save(row.id, p)}>
+                    <button type="button" className="btn-danger" onClick={() => remove(row.id)}>Eliminar</button>
+                  </EntityForm>
+                </div>
+              </details>
+            </li>
+          ))}
+          {rows?.length === 0 && <li className="text-sm text-stone-500">Todavía no hay registros.</li>}
+        </ul>
+      )}
     </div>
   );
 }

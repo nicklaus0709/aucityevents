@@ -1,55 +1,55 @@
-# Eventos Capioví
+# Eventos Capioví (sobre Base44)
 
-Sistema web (sitio público + panel administrador) para los eventos de la Municipalidad de Capioví, Misiones.
-**Stack:** Next.js 15 (App Router, TypeScript) · Tailwind · Supabase (Postgres + Auth + Storage) · Mercado Pago · Vercel.
+Sitio público + panel de administración para los eventos de la Municipalidad de Capioví, Misiones.
+**Stack:** Vite + React + TypeScript + Tailwind · **Base44** como backend (entidades, usuarios, archivos) y hosting.
 
-Un mismo despliegue administra **varios eventos** (Navidad, Pascuas, Fiesta Rural…). Cada evento es un sitio en `/e/<slug>`.
+> La versión anterior (Next.js + Supabase + Vercel) quedó guardada en el tag `v0-supabase`.
+
+Un mismo sitio administra **varios eventos** (Navidad, Pascuas, Fiesta Rural…). Cada evento vive en `/e/<slug>`.
 
 ## Funcionalidades
+**Público:** landing, Nosotros, Historia (línea de tiempo), galería con visor, programación por día, gastronomía (puestos numerados + productos), comercios que publicitan (página + banners rotativos), contacto, chatbot, redes y WhatsApp, color por evento.
+**Admin (`/admin`):** login → selector de evento → contenido, galería, grilla, gastronomía, publicidad, mensajes, bonos (tipos, canje por código, CSV) y QR imprimibles.
+**Pendiente:** compra de bonos con Mercado Pago (se mostrará "Compra online: muy pronto").
 
-**Sitio público** (`/` lista de eventos, `/e/<slug>`):
-landing con Nosotros, Historia y Galería · grilla de artistas por día · gastronomía (puestos numerados y productos) · comercios que publicitan (página completa + banner rotativo en todas las páginas) · formulario de contacto (artistas / puestos / comercios) · compra de bonos con Mercado Pago (con código QR de comprobante) · Instagram, Facebook y WhatsApp · chatbot · color de marca por evento · 100 % responsivo.
+## Modo demo (sin Base44)
+Si `VITE_BASE44_APP_ID` está vacío, el sitio muestra 3 eventos de ejemplo y el panel muestra un aviso. `npm install && npm run dev` → http://localhost:3000
 
-**Panel admin** (`/admin`): login → selector de evento → Contenido, Galería, Grilla, Gastronomía, Publicidad, Mensajes, Bonos (ventas, canje por código, export CSV), QR imprimibles (grilla, gastronomía, sitio, bonos). Gestión de usuarios y permisos por evento (solo super admin).
+## Conectar con Base44
 
-## Puesta en marcha
+Requisitos: cuenta de Base44 (el *GitHub sync* de dos vías y las funciones de backend requieren un plan pago, ver abajo).
 
-1. **Supabase**: crear proyecto → SQL Editor → ejecutar [supabase/migrations/0001_init.sql](supabase/migrations/0001_init.sql).
-2. Crear tu usuario en *Authentication → Users* e ingresar este SQL para volverte super admin:
-   `update public.profiles set role = 'super_admin' where email = 'tu@correo.com';`
-3. `cp .env.example .env.local` y completar las variables (Supabase, `NEXT_PUBLIC_SITE_URL`, Mercado Pago).
-4. `npm install && npm run dev` → http://localhost:3000/admin
-5. **Mercado Pago**: crear aplicación → copiar el Access Token a `MP_ACCESS_TOKEN`; en *Webhooks* configurar `https://TU-DOMINIO/api/bonos/webhook` (evento *Pagos*) y copiar la clave secreta a `MP_WEBHOOK_SECRET`.
-6. **Vercel**: importar el repo de GitHub y cargar las mismas variables de entorno. En Supabase *Auth → URL Configuration* poner el dominio de Vercel.
+1. `npx base44 login`
+2. Crear y enlazar la app (el proyecto ya tiene `base44/config.jsonc`):
+   `npx base44 link --create --name aucityevents`
+3. Subir las entidades y sus reglas de seguridad:
+   `npx base44 entities push -y`
+4. Copiar el **App ID** (texto entre `/apps/` y `/editor/` en la URL del editor) a `.env.local`:
+   `VITE_BASE44_APP_ID=xxxxxxxx` y correr `npm run dev`.
+5. Entrar a `/admin` con tu usuario de Base44 (debe tener rol `admin`). Con la base vacía aparece el botón **Cargar datos de ejemplo**.
+6. Publicar: `npx base44 deploy --build -y` (o `npx base44 build && npx base44 site deploy -y`).
 
-## Seguridad aplicada
+### Usuarios y roles
+Se gestionan en Base44 (Dashboard → Users): invitar por email y asignar rol **admin** para que puedan usar el panel. Los usuarios con rol `user` no pueden modificar nada.
 
-- **RLS en todas las tablas**: el público solo lee contenido de eventos publicados; mensajes de contacto y compras solo los ve el equipo del evento. Las escrituras públicas pasan por el servidor con validación (zod), honeypot anti-bots y *rate limit* persistente en base de datos.
-- Roles: `super_admin` y miembros por evento (`admin`/`editor`). Los usuarios no pueden cambiar su propio rol; los editores solo pueden modificar campos operativos de una compra (nunca monto, estado ni código).
-- `SUPABASE_SERVICE_ROLE_KEY` solo se usa en el servidor (`server-only`), nunca llega al navegador.
-- **Pagos**: el precio sale siempre de la base; el webhook verifica la firma HMAC de Mercado Pago, consulta el pago a su API (no confía en el body), valida monto y moneda, y es idempotente. El canje de bonos es atómico (sin doble canje).
-- Login con mensajes genéricos + límite de intentos; contraseñas de mínimo 12 caracteres; sesión validada con `getUser()` en middleware.
-- Subida de imágenes: lista blanca de tipos, 5 MB, verificación de firma del archivo, carpeta por evento protegida por policies de Storage.
-- Cabeceras: CSP, HSTS, `X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy`. `/admin` con `noindex` y sin caché. Export CSV protegido contra inyección de fórmulas. Todo texto del público se renderiza escapado.
+### Seguridad (reglas de las entidades, `base44/entities/*.jsonc`)
+- Contenido público de solo lectura; **toda escritura requiere rol admin**.
+- `Event`: el público solo ve los eventos con `is_published = true`.
+- `ContactMessage`: cualquiera puede **crear** (formulario de contacto); solo admin lee, edita o borra.
+- `BonoPurchase`: solo admin (las compras se crearán desde una función de backend con Mercado Pago).
+- Formularios: validación, campo trampa anti-bots, texto siempre escapado (React), imágenes validadas por tipo, tamaño y firma del archivo.
 
-## Chatbot
+### GitHub
+El repo es `nicklaus0709/aucityevents` (rama `main`). Para enlazarlo a Base44: la app debe haberse creado con la CLI (paso 2), instalar la **Base44 GitHub App** en el repo con permiso de escritura y conectarlo desde *Overview*. Requiere plan Builder o superior; la conexión no se puede deshacer.
 
-Sin configuración responde con reglas simples sobre grilla/gastronomía/bonos. Si definís `ANTHROPIC_API_KEY`, usa un modelo de Claude restringido a los datos del evento.
+## Cosas a verificar la primera vez (no pude probarlas sin tu cuenta de Base44)
+1. `entities push` acepta los archivos `base44/entities/*.jsonc` y el SDK expone `base44.entities.Event`, `GalleryImage`, etc. Si algún nombre difiere, se corrige en un solo lugar (`src/lib/api.ts`).
+2. Un visitante **sin sesión** puede leer los eventos publicados y **crear** un mensaje de contacto.
+3. El login con email/contraseña está habilitado para tu app (si usás Google, habilitá el login con contraseña en la configuración de autenticación).
+4. El sitio publicado abre bien un enlace directo como `/e/navidad-capiovi/eventos` (necesario antes de imprimir los QR). Si da 404, avisame y pasamos a rutas con `#`.
+5. La subida de imágenes del panel devuelve una URL pública.
 
-## Pendiente / ideas
-
-- Activar MFA (TOTP) para usuarios del panel (Supabase Auth lo soporta).
-- Captcha (Cloudflare Turnstile) en el formulario de contacto si aparece spam.
-- Envío de email con el comprobante del bono (Resend) y rol "cajero" que solo canjea bonos.
-- `npm audit` reporta un aviso de PostCSS dentro de Next 15 (solo en tiempo de build); se resuelve actualizando a Next 16.
-
-## Probar el panel admin y publicar (sin Mercado Pago)
-
-1. **Supabase** (gratis): crear proyecto → SQL Editor → ejecutar `supabase/migrations/0001_init.sql` y después `supabase/seed.sql` (carga los 3 eventos de ejemplo con sus fotos).
-2. **Usuario admin**: Authentication → Users → *Add user* (email + contraseña, "Auto Confirm User") y en el SQL Editor:
-   `update public.profiles set role = 'super_admin' where email = 'tu@correo.com';`
-3. **Local**: crear `.env.local` con `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` y `NEXT_PUBLIC_SITE_URL=http://localhost:3000` → `npm run dev` → http://localhost:3000/admin.
-4. **Vercel**: importar el repo y cargar esas mismas 4 variables (con `NEXT_PUBLIC_SITE_URL` = la URL de Vercel). Sin `MP_ACCESS_TOKEN` la compra de bonos queda como "Muy pronto".
-5. Supabase → Authentication → URL Configuration: Site URL = la URL de Vercel.
-
-Para cambiar los comercios de ejemplo por reales: Panel → evento → Publicidad → subir la foto de cada comercio (JPG/PNG/WebP, máx. 5 MB) y borrar los banners de ejemplo.
+## Mejoras pendientes
+- Pago de bonos con Mercado Pago (función de backend + webhook firmado).
+- Permisos por evento (que un usuario edite solo Navidad).
+- Límite de envíos del formulario de contacto (hoy solo trampa anti-bots).

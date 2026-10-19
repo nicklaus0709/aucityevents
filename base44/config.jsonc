@@ -1,0 +1,11 @@
+{
+  "name": "aucityevents",
+  "description": "Eventos de la comunidad de Capioví, Misiones",
+  "entitiesDir": "./entities",
+  "site": {
+    "installCommand": "npm install",
+    "buildCommand": "npm run build",
+    "serveCommand": "npm run dev",
+    "outputDirectory": "dist"
+  }
+}

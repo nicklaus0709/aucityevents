@@ -1,7 +1,7 @@
 import type { Ad, BonoType, EventRow, FoodStall, GalleryImage, ScheduleItem } from '@/lib/types';
 
 /** Modo demo: se activa solo cuando NO hay Supabase configurado. Datos de prueba, solo lectura. */
-export const DEMO = !process.env.NEXT_PUBLIC_SUPABASE_URL;
+export const DEMO = !import.meta.env.VITE_BASE44_APP_ID;
 
 const N = '/demo/navidad';
 const A = '/demo/ads';

@@ -1,0 +1,57 @@
+{
+  "name": "ScheduleItem",
+  "type": "object",
+  "title": "Show de la grilla",
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "artist": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 150
+    },
+    "stage": {
+      "type": "string",
+      "maxLength": 100
+    },
+    "starts_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ends_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 1000
+    },
+    "image_url": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "event_id",
+    "artist",
+    "starts_at"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": true,
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "name": "BonoPurchase",
+  "type": "object",
+  "title": "Compra de bono",
+  "description": "Solo accesible para administradores; las altas desde el público se harán con una función de backend (pagos).",
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "bono_type_id": {
+      "type": "string"
+    },
+    "code": {
+      "type": "string"
+    },
+    "buyer_name": {
+      "type": "string"
+    },
+    "buyer_email": {
+      "type": "string",
+      "format": "email"
+    },
+    "buyer_phone": {
+      "type": "string"
+    },
+    "quantity": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20
+    },
+    "amount": {
+      "type": "number",
+      "minimum": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "approved",
+        "rejected",
+        "cancelled",
+        "refunded"
+      ],
+      "default": "pending"
+    },
+    "mp_payment_id": {
+      "type": "string"
+    },
+    "redeemed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "notes": {
+      "type": "string",
+      "maxLength": 500
+    }
+  },
+  "required": [
+    "event_id",
+    "bono_type_id",
+    "code",
+    "buyer_name",
+    "buyer_email",
+    "quantity",
+    "amount"
+  ],
+  "rls": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
