@@ -1,4 +1,5 @@
 import { TABLES } from '@/lib/admin-config';
+import { MODELS } from '@/lib/db';
 import { requireEventAccess } from '@/lib/auth';
 import { deleteRow, saveRow } from '@/app/admin/actions';
 import FieldInput from './FieldInput';
@@ -19,14 +20,17 @@ function Hidden({ table, eventId, path, id }: { table: string; eventId: string; 
 export default async function CrudManager({ table, eventId, searchParams }: { table: string; eventId: string; searchParams: { error?: string; ok?: string } }) {
   const cfg = TABLES[table];
   const path = `/admin/${eventId}/${{ gallery_images: 'galeria', schedule_items: 'programacion', food_stalls: 'gastronomia', ads: 'publicidad', bono_types: 'bonos' }[table]}`;
-  const { supabase } = await requireEventAccess(eventId);
-  const { data: rows } = await supabase.from(table).select('*').eq('event_id', eventId).order(cfg.order.column, { ascending: cfg.order.ascending });
+  await requireEventAccess(eventId);
+  const rows: Record<string, unknown>[] = await MODELS[table].findMany({
+    where: { event_id: eventId },
+    orderBy: { [cfg.order.column]: cfg.order.ascending ? 'asc' : 'desc' },
+  });
 
   return (
     <div className="space-y-4">
       <Flash error={searchParams.error} ok={searchParams.ok} />
 
-      <details className="card" open={!rows?.length}>
+      <details className="card" open={rows.length === 0}>
         <summary className="cursor-pointer font-semibold text-brand">+ Agregar {cfg.singular}</summary>
         <form action={saveRow} className="mt-4 grid gap-4 sm:grid-cols-2">
           <Hidden table={table} eventId={eventId} path={path} />
@@ -40,7 +44,7 @@ export default async function CrudManager({ table, eventId, searchParams }: { ta
       </details>
 
       <ul className="space-y-3">
-        {rows?.map((row) => (
+        {rows.map((row) => (
           <li key={row.id}>
             <details className="card">
               <summary className="cursor-pointer font-medium">{cfg.title(row)}</summary>
@@ -60,7 +64,7 @@ export default async function CrudManager({ table, eventId, searchParams }: { ta
             </details>
           </li>
         ))}
-        {rows?.length === 0 && <li className="text-sm text-stone-500">Todavía no hay registros.</li>}
+        {rows.length === 0 && <li className="text-sm text-stone-500">Todavía no hay registros.</li>}
       </ul>
     </div>
   );

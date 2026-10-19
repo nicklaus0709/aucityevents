@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { requireEventAccess } from '@/lib/auth';
+import { prisma } from '@/lib/db';
 import { formatDateTime, formatMoney } from '@/lib/utils';
 import CrudManager from '@/components/admin/CrudManager';
 import Flash from '@/components/admin/Flash';
@@ -11,12 +12,13 @@ const COLOR: Record<string, string> = { pending: 'bg-amber-100 text-amber-800', 
 export default async function Bonos({ params, searchParams }: { params: Promise<{ eventId: string }>; searchParams: Promise<{ error?: string; ok?: string }> }) {
   const { eventId } = await params;
   const sp = await searchParams;
-  const { supabase, event } = await requireEventAccess(eventId);
-  const { data: purchases } = await supabase
-    .from('bono_purchases').select('id,code,buyer_name,buyer_email,buyer_phone,quantity,amount,status,redeemed_at,created_at,bono_types(name)')
-    .eq('event_id', eventId).order('created_at', { ascending: false }).limit(500);
+  const { event } = await requireEventAccess(eventId);
+  const purchases = await prisma.bono_purchases.findMany({
+    where: { event_id: eventId }, orderBy: { created_at: 'desc' }, take: 500,
+    include: { bono_type: { select: { name: true } } },
+  });
 
-  const approved = (purchases ?? []).filter((p) => p.status === 'approved');
+  const approved = purchases.filter((p) => p.status === 'approved');
   const total = approved.reduce((a, p) => a + Number(p.amount), 0);
 
   return (
@@ -48,18 +50,18 @@ export default async function Bonos({ params, searchParams }: { params: Promise<
           <table className="w-full min-w-[720px] text-left text-sm">
             <thead className="bg-stone-50 text-xs uppercase text-stone-500"><tr><th className="p-3">Fecha</th><th>Comprador</th><th>Bono</th><th>Cant.</th><th>Monto</th><th>Código</th><th>Estado</th><th>Canje</th></tr></thead>
             <tbody>
-              {purchases?.map((p) => (
+              {purchases.map((p) => (
                 <tr key={p.id} className="border-t border-stone-100">
-                  <td className="p-3 whitespace-nowrap">{formatDateTime(p.created_at)}</td>
+                  <td className="p-3 whitespace-nowrap">{formatDateTime(p.created_at.toISOString())}</td>
                   <td>{p.buyer_name}<br /><span className="text-xs text-stone-500">{p.buyer_email}</span></td>
-                  <td>{(p.bono_types as unknown as { name: string } | null)?.name}</td>
+                  <td>{p.bono_type?.name}</td>
                   <td>{p.quantity}</td><td>{formatMoney(Number(p.amount))}</td>
                   <td className="font-mono">{p.code}</td>
                   <td><span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${COLOR[p.status]}`}>{STATUS[p.status]}</span></td>
-                  <td>{p.redeemed_at ? '✔ ' + formatDateTime(p.redeemed_at) : '—'}</td>
+                  <td>{p.redeemed_at ? '✔ ' + formatDateTime(p.redeemed_at.toISOString()) : '—'}</td>
                 </tr>
               ))}
-              {purchases?.length === 0 && <tr><td colSpan={8} className="p-4 text-stone-500">Todavía no hay compras.</td></tr>}
+              {purchases.length === 0 && <tr><td colSpan={8} className="p-4 text-stone-500">Todavía no hay compras.</td></tr>}
             </tbody>
           </table>
         </div>

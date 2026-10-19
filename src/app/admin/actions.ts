@@ -1,24 +1,32 @@
 'use server';
 
 import { randomUUID } from 'crypto';
+import { promises as fs } from 'fs';
+import nodePath from 'path';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { headers } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { z } from 'zod';
 import { requireEventAccess, requireSuperAdmin } from '@/lib/auth';
+import { MODELS, prisma } from '@/lib/db';
 import { TABLES, type Field } from '@/lib/admin-config';
 import { fromInputDateTime } from '@/lib/utils';
-import { createClient } from '@/lib/supabase/server';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { SESSION_COOKIE, SESSION_MAX_AGE, createSessionToken, hashPassword, verifyPassword } from '@/lib/session';
 import { getClientIp, rateLimit } from '@/lib/security';
 
 const MAX_IMAGE = 5 * 1024 * 1024;
 const IMAGE_TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+const UPLOAD_DIR = process.env.UPLOAD_DIR || nodePath.join(process.cwd(), '.data', 'uploads');
 
 type Row = Record<string, unknown>;
 
 function back(path: string, key: 'error' | 'ok', msg: string): never {
   redirect(`${path}?${key}=${encodeURIComponent(msg)}`);
+}
+
+function isUniqueViolation(e: unknown) {
+  return e instanceof PrismaClientKnownRequestError && e.code === 'P2002';
 }
 
 function parseField(f: Field, fd: FormData): { value?: unknown; error?: string } {
@@ -56,7 +64,7 @@ function parseField(f: Field, fd: FormData): { value?: unknown; error?: string }
   }
 }
 
-async function uploadImage(supabase: Awaited<ReturnType<typeof createClient>>, eventId: string, file: File): Promise<{ url?: string; error?: string }> {
+async function uploadImage(eventId: string, file: File): Promise<{ url?: string; error?: string }> {
   const ext = IMAGE_TYPES[file.type];
   if (!ext) return { error: 'Solo se permiten imágenes JPG, PNG o WebP' };
   if (file.size > MAX_IMAGE) return { error: 'La imagen supera los 5 MB' };
@@ -67,10 +75,14 @@ async function uploadImage(supabase: Awaited<ReturnType<typeof createClient>>, e
   const isWebp = String.fromCharCode(...head.slice(0, 4)) === 'RIFF' && String.fromCharCode(...head.slice(8, 12)) === 'WEBP';
   if (!(isJpg || isPng || isWebp)) return { error: 'El archivo no es una imagen válida' };
 
-  const path = `${eventId}/${randomUUID()}.${ext}`;
-  const { error } = await supabase.storage.from('event-media').upload(path, file, { contentType: file.type, upsert: false });
-  if (error) return { error: 'No se pudo subir la imagen' };
-  return { url: supabase.storage.from('event-media').getPublicUrl(path).data.publicUrl };
+  const name = `${randomUUID()}.${ext}`;
+  try {
+    await fs.mkdir(nodePath.join(UPLOAD_DIR, eventId), { recursive: true });
+    await fs.writeFile(nodePath.join(UPLOAD_DIR, eventId, name), Buffer.from(await file.arrayBuffer()));
+  } catch {
+    return { error: 'No se pudo subir la imagen' };
+  }
+  return { url: `/api/media/${eventId}/${name}` };
 }
 
 function checkPath(eventId: string, path: string) {
@@ -86,7 +98,7 @@ export async function saveRow(fd: FormData) {
   if (!cfg || !Object.hasOwn(TABLES, table)) redirect('/admin');
   checkPath(eventId, path);
 
-  const { supabase, event } = await requireEventAccess(eventId);
+  const { event } = await requireEventAccess(eventId);
 
   const payload: Row = {};
   for (const f of cfg.fields) {
@@ -94,10 +106,10 @@ export async function saveRow(fd: FormData) {
       const file = fd.get(f.name);
       const current = String(fd.get(`${f.name}__current`) || '');
       if (file instanceof File && file.size > 0) {
-        const up = await uploadImage(supabase, eventId, file);
+        const up = await uploadImage(eventId, file);
         if (up.error) back(path, 'error', up.error);
         payload[f.name] = up.url;
-      } else if (current && current.startsWith(process.env.NEXT_PUBLIC_SUPABASE_URL!)) {
+      } else if (current && current.startsWith('/api/media/')) {
         payload[f.name] = current;
       } else if (f.required) {
         back(path, 'error', `${f.label} es obligatoria`);
@@ -109,17 +121,20 @@ export async function saveRow(fd: FormData) {
     payload[f.name] = r.value;
   }
 
-  if (table === 'events') {
-    if (payload.start_date && payload.end_date && String(payload.end_date) < String(payload.start_date)) back(path, 'error', 'La fecha de fin es anterior al inicio');
-    const { error } = await supabase.from('events').update(payload).eq('id', eventId);
-    if (error) back(path, 'error', 'No se pudo guardar');
-  } else if (id) {
-    if (!/^[0-9a-f-]{36}$/i.test(id)) redirect('/admin');
-    const { error } = await supabase.from(table).update(payload).eq('id', id).eq('event_id', eventId);
-    if (error) back(path, 'error', error.code === '23505' ? 'Ya existe un registro con ese número' : 'No se pudo guardar');
-  } else {
-    const { error } = await supabase.from(table).insert({ ...payload, event_id: eventId });
-    if (error) back(path, 'error', error.code === '23505' ? 'Ya existe un registro con ese número' : 'No se pudo guardar');
+  if (table === 'events' && payload.start_date && payload.end_date && String(payload.end_date) < String(payload.start_date)) {
+    back(path, 'error', 'La fecha de fin es anterior al inicio');
+  }
+  try {
+    if (table === 'events') {
+      await prisma.events.update({ where: { id: eventId }, data: payload });
+    } else if (id) {
+      if (!/^[0-9a-f-]{36}$/i.test(id)) redirect('/admin');
+      await MODELS[table].update({ where: { id }, data: payload });
+    } else {
+      await MODELS[table].create({ data: { ...payload, event_id: eventId } });
+    }
+  } catch (e) {
+    back(path, 'error', isUniqueViolation(e) ? 'Ya existe un registro con ese número' : 'No se pudo guardar');
   }
 
   revalidatePath(`/e/${event.slug}`, 'layout');
@@ -136,9 +151,8 @@ export async function deleteRow(fd: FormData) {
   if (!cfg || !cfg.scoped || !/^[0-9a-f-]{36}$/i.test(id)) redirect('/admin');
   checkPath(eventId, path);
 
-  const { supabase, event } = await requireEventAccess(eventId);
-  const { error } = await supabase.from(table).delete().eq('id', id).eq('event_id', eventId);
-  if (error) back(path, 'error', 'No se pudo eliminar (¿tiene compras asociadas?)');
+  const { event } = await requireEventAccess(eventId);
+  await MODELS[table].deleteMany({ where: { id, event_id: eventId } });
   revalidatePath(`/e/${event.slug}`, 'layout');
   back(path, 'ok', 'Eliminado');
 }
@@ -149,29 +163,39 @@ export async function signIn(fd: FormData) {
   if (!(await rateLimit(`login:${ip}`, 10, 900))) redirect('/admin/login?error=Demasiados%20intentos.%20Esper%C3%A1%2015%20minutos');
   const parsed = z.object({ email: z.string().email().max(150), password: z.string().min(1).max(200) }).safeParse(Object.fromEntries(fd));
   if (!parsed.success) redirect('/admin/login?error=Credenciales%20inv%C3%A1lidas');
-  const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword(parsed.data);
-  if (error) redirect('/admin/login?error=Credenciales%20inv%C3%A1lidas'); // mensaje genérico: no revela si el usuario existe
+
+  const user = await prisma.users.findUnique({ where: { email: parsed.data.email.toLowerCase() } });
+  if (!user || !(await verifyPassword(parsed.data.password, user.password_hash))) {
+    redirect('/admin/login?error=Credenciales%20inv%C3%A1lidas'); // mensaje genérico: no revela si el usuario existe
+  }
+  const { token, maxAge } = await createSessionToken(user.id);
+  const store = await cookies();
+  store.set(SESSION_COOKIE, token, { httpOnly: true, sameSite: 'lax', path: '/', maxAge });
   redirect('/admin');
 }
 
 export async function signOut() {
-  const supabase = await createClient();
-  await supabase.auth.signOut();
+  const store = await cookies();
+  store.delete(SESSION_COOKIE);
   redirect('/admin/login');
 }
 
 // ---------------- Eventos ----------------
 export async function createEvent(fd: FormData) {
-  const { supabase } = await requireSuperAdmin();
+  await requireSuperAdmin();
   const parsed = z.object({
     name: z.string().trim().min(2).max(120),
     slug: z.string().trim().toLowerCase().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/).max(60),
   }).safeParse(Object.fromEntries(fd));
   if (!parsed.success) redirect('/admin/nuevo?error=Nombre%20o%20direcci%C3%B3n%20inv%C3%A1lidos%20(solo%20min%C3%BAsculas%2C%20n%C3%BAmeros%20y%20guiones)');
-  const { data, error } = await supabase.from('events').insert(parsed.data).select('id').single();
-  if (error || !data) redirect(`/admin/nuevo?error=${encodeURIComponent(error?.code === '23505' ? 'Esa dirección ya existe' : 'No se pudo crear')}`);
-  redirect(`/admin/${data.id}/config`);
+  let newId: string | null = null;
+  try {
+    newId = (await prisma.events.create({ data: parsed.data, select: { id: true } })).id;
+  } catch (e) {
+    if (isUniqueViolation(e)) redirect('/admin/nuevo?error=Esa%20direcci%C3%B3n%20ya%20existe');
+    redirect('/admin/nuevo?error=No%20se%20pudo%20crear');
+  }
+  redirect(`/admin/${newId}/config`);
 }
 
 // ---------------- Mensajes de contacto ----------------
@@ -180,8 +204,8 @@ export async function setMessageStatus(fd: FormData) {
   const id = String(fd.get('_id'));
   const status = String(fd.get('status'));
   if (!['nuevo', 'en_proceso', 'resuelto'].includes(status) || !/^[0-9a-f-]{36}$/i.test(id)) redirect('/admin');
-  const { supabase } = await requireEventAccess(eventId);
-  await supabase.from('contact_messages').update({ status }).eq('id', id).eq('event_id', eventId);
+  await requireEventAccess(eventId);
+  await prisma.contact_messages.updateMany({ where: { id, event_id: eventId }, data: { status } });
   revalidatePath(`/admin/${eventId}/mensajes`);
 }
 
@@ -189,8 +213,8 @@ export async function deleteMessage(fd: FormData) {
   const eventId = String(fd.get('_eventId'));
   const id = String(fd.get('_id'));
   if (!/^[0-9a-f-]{36}$/i.test(id)) redirect('/admin');
-  const { supabase } = await requireEventAccess(eventId);
-  await supabase.from('contact_messages').delete().eq('id', id).eq('event_id', eventId);
+  await requireEventAccess(eventId);
+  await prisma.contact_messages.deleteMany({ where: { id, event_id: eventId } });
   revalidatePath(`/admin/${eventId}/mensajes`);
 }
 
@@ -200,18 +224,19 @@ export async function redeemBono(fd: FormData) {
   const path = `/admin/${eventId}/bonos`;
   const code = String(fd.get('code') || '').trim().toUpperCase();
   if (!/^[A-Z0-9]{5}-[A-Z0-9]{5}$/.test(code)) back(path, 'error', 'Código con formato inválido');
-  const { supabase, user } = await requireEventAccess(eventId);
+  const { user } = await requireEventAccess(eventId);
 
-  const { data: found } = await supabase.from('bono_purchases').select('id,status,redeemed_at,quantity,buyer_name').eq('event_id', eventId).eq('code', code).maybeSingle();
+  const found = await prisma.bono_purchases.findFirst({ where: { event_id: eventId, code } });
   if (!found) back(path, 'error', 'Código inexistente');
   if (found.status !== 'approved') back(path, 'error', `La compra no está aprobada (estado: ${found.status})`);
-  if (found.redeemed_at) back(path, 'error', `Este bono ya fue canjeado el ${new Date(found.redeemed_at).toLocaleString('es-AR', { timeZone: 'America/Argentina/Cordoba' })}`);
+  if (found.redeemed_at) back(path, 'error', `Este bono ya fue canjeado el ${found.redeemed_at.toLocaleString('es-AR', { timeZone: 'America/Argentina/Cordoba' })}`);
 
   // Canje atómico: la condición redeemed_at IS NULL evita el doble canje simultáneo
-  const { data: updated } = await supabase.from('bono_purchases')
-    .update({ redeemed_at: new Date().toISOString(), redeemed_by: user.id })
-    .eq('id', found.id).is('redeemed_at', null).select('id');
-  if (!updated?.length) back(path, 'error', 'El bono ya fue canjeado');
+  const updated = await prisma.bono_purchases.updateMany({
+    where: { id: found.id, redeemed_at: null },
+    data: { redeemed_at: new Date(), redeemed_by: user.id },
+  });
+  if (updated.count === 0) back(path, 'error', 'El bono ya fue canjeado');
   revalidatePath(path);
   back(path, 'ok', `✔ Bono válido de ${found.buyer_name} (${found.quantity} unidad/es) canjeado`);
 }
@@ -228,12 +253,23 @@ export async function createUser(fd: FormData) {
   if (!parsed.success) back('/admin/usuarios', 'error', parsed.error.issues[0].message);
   const eventIds = fd.getAll('events').map(String).filter((e) => /^[0-9a-f-]{36}$/i.test(e));
 
-  const db = createAdminClient();
-  const { data, error } = await db.auth.admin.createUser({
-    email: parsed.data.email, password: parsed.data.password, email_confirm: true, user_metadata: { full_name: parsed.data.full_name },
-  });
-  if (error || !data.user) back('/admin/usuarios', 'error', 'No se pudo crear el usuario (¿el email ya existe?)');
-  if (eventIds.length) await db.from('event_members').insert(eventIds.map((event_id) => ({ event_id, user_id: data.user.id, role: parsed.data.role })));
+  try {
+    const user = await prisma.users.create({
+      data: {
+        email: parsed.data.email,
+        full_name: parsed.data.full_name,
+        password_hash: await hashPassword(parsed.data.password),
+        role: 'user',
+      },
+      select: { id: true },
+    });
+    if (eventIds.length) {
+      await prisma.event_members.createMany({ data: eventIds.map((event_id) => ({ event_id, user_id: user.id, role: parsed.data.role })) });
+    }
+  } catch (e) {
+    if (isUniqueViolation(e)) back('/admin/usuarios', 'error', 'No se pudo crear el usuario (el email ya existe)');
+    back('/admin/usuarios', 'error', 'No se pudo crear el usuario');
+  }
   revalidatePath('/admin/usuarios');
   back('/admin/usuarios', 'ok', 'Usuario creado');
 }
@@ -242,7 +278,11 @@ export async function addMembership(fd: FormData) {
   await requireSuperAdmin();
   const p = z.object({ user_id: z.string().uuid(), event_id: z.string().uuid(), role: z.enum(['admin', 'editor']) }).safeParse(Object.fromEntries(fd));
   if (!p.success) back('/admin/usuarios', 'error', 'Datos inválidos');
-  await createAdminClient().from('event_members').upsert(p.data);
+  await prisma.event_members.upsert({
+    where: { event_id_user_id: { event_id: p.data.event_id, user_id: p.data.user_id } },
+    create: p.data,
+    update: { role: p.data.role },
+  });
   revalidatePath('/admin/usuarios');
 }
 
@@ -250,7 +290,9 @@ export async function removeMembership(fd: FormData) {
   await requireSuperAdmin();
   const p = z.object({ user_id: z.string().uuid(), event_id: z.string().uuid() }).safeParse(Object.fromEntries(fd));
   if (!p.success) back('/admin/usuarios', 'error', 'Datos inválidos');
-  await createAdminClient().from('event_members').delete().eq('user_id', p.data.user_id).eq('event_id', p.data.event_id);
+  await prisma.event_members.delete({
+    where: { event_id_user_id: { event_id: p.data.event_id, user_id: p.data.user_id } },
+  });
   revalidatePath('/admin/usuarios');
 }
 
@@ -259,7 +301,11 @@ export async function deleteUser(fd: FormData) {
   const id = z.string().uuid().safeParse(fd.get('user_id'));
   if (!id.success) back('/admin/usuarios', 'error', 'Datos inválidos');
   if (id.data === user.id) back('/admin/usuarios', 'error', 'No podés eliminar tu propio usuario');
-  await createAdminClient().auth.admin.deleteUser(id.data);
+  try {
+    await prisma.users.delete({ where: { id: id.data } });
+  } catch {
+    back('/admin/usuarios', 'error', 'No se pudo eliminar el usuario');
+  }
   revalidatePath('/admin/usuarios');
   back('/admin/usuarios', 'ok', 'Usuario eliminado');
 }

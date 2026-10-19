@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { createClient } from '@/lib/supabase/server';
+import { getSessionUser } from '@/lib/auth';
 import { DEMO } from '@/lib/demo-data';
 import { signOut } from './actions';
 
@@ -11,13 +11,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     return (
       <main className="mx-auto max-w-lg px-4 py-20 text-center">
         <h1 className="text-2xl">Modo demo</h1>
-        <p className="mt-3 text-stone-600">El panel de administración se activa al conectar Supabase. Por ahora solo se muestra el sitio público con datos de prueba.</p>
+        <p className="mt-3 text-stone-600">El panel de administración se activa al conectar la base de datos. Por ahora solo se muestra el sitio público con datos de prueba.</p>
         <Link href="/" className="btn mt-6">Ver el sitio</Link>
       </main>
     );
   }
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   return (
     <div className="min-h-screen bg-stone-100">
       <header className="no-print border-b border-stone-200 bg-white">

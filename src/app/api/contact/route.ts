@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { DEMO } from '@/lib/demo-data';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { prisma } from '@/lib/db';
 import { getClientIp, isSameOrigin, json, rateLimit } from '@/lib/security';
 
 const schema = z.object({
@@ -25,13 +25,15 @@ export async function POST(req: Request) {
     return json({ error: 'Demasiados envíos. Probá de nuevo más tarde.' }, 429);
   }
 
-  const db = createAdminClient();
-  const { data: event } = await db.from('events').select('id').eq('slug', d.slug).eq('is_published', true).maybeSingle();
+  const event = await prisma.events.findFirst({ where: { slug: d.slug, is_published: true }, select: { id: true } });
   if (!event) return json({ error: 'Evento no encontrado' }, 404);
 
-  const { error } = await db.from('contact_messages').insert({
-    event_id: event.id, name: d.name, email: d.email, phone: d.phone || null, type: d.type, message: d.message,
-  });
-  if (error) return json({ error: 'No pudimos enviar tu mensaje' }, 500);
+  try {
+    await prisma.contact_messages.create({
+      data: { event_id: event.id, name: d.name, email: d.email, phone: d.phone || null, type: d.type, message: d.message },
+    });
+  } catch {
+    return json({ error: 'No pudimos enviar tu mensaje' }, 500);
+  }
   return json({ ok: true });
 }

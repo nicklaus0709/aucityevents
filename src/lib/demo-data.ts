@@ -1,7 +1,7 @@
 import type { Ad, BonoType, EventRow, FoodStall, GalleryImage, ScheduleItem } from '@/lib/types';
 
-/** Modo demo: se activa solo cuando NO hay Supabase configurado. Datos de prueba, solo lectura. */
-export const DEMO = !process.env.NEXT_PUBLIC_SUPABASE_URL;
+/** Modo demo: se activa solo cuando NO hay base de datos configurada. Datos de prueba, solo lectura. */
+export const DEMO = !process.env.DATABASE_URL;
 
 const N = '/demo/navidad';
 const A = '/demo/ads';

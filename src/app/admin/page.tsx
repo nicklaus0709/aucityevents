@@ -1,17 +1,18 @@
 import Link from 'next/link';
 import { requireUser } from '@/lib/auth';
+import { prisma } from '@/lib/db';
+import { toEventRow } from '@/lib/data';
 import type { EventRow } from '@/lib/types';
 
 export default async function SelectEvent() {
-  const { supabase, user, isSuper, profile } = await requireUser();
+  const { user, isSuper, profile } = await requireUser();
 
   let events: EventRow[] = [];
   if (isSuper) {
-    const { data } = await supabase.from('events').select('*').order('created_at');
-    events = (data as EventRow[]) ?? [];
+    events = (await prisma.events.findMany({ orderBy: { created_at: 'asc' } })).map(toEventRow);
   } else {
-    const { data } = await supabase.from('event_members').select('events(*)').eq('user_id', user.id);
-    events = (data ?? []).map((m) => m.events as unknown as EventRow).filter(Boolean);
+    const memberships = await prisma.event_members.findMany({ where: { user_id: user.id }, include: { event: true } });
+    events = memberships.map((m) => toEventRow(m.event));
   }
 
   return (

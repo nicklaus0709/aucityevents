@@ -1,14 +1,31 @@
 import { cache } from 'react';
 import { DEMO, demo } from '@/lib/demo-data';
-import { createPublicClient } from '@/lib/supabase/public';
+import { prisma } from '@/lib/db';
 import type { Ad, BonoType, EventRow, FoodStall, GalleryImage, ScheduleItem } from '@/lib/types';
 
-/** Lectura pública (RLS: solo eventos publicados). Nunca rompe el render si falla. */
+type EventRecord = {
+  id: string; slug: string; name: string; tagline: string | null; description: string | null; history: string | null;
+  location: string | null; start_date: Date | null; end_date: Date | null; hero_image: string | null;
+  theme_color: string; accent_color: string; logo_url: string | null; phone: string | null; email: string | null;
+  youtube_url: string | null; instagram_url: string | null; facebook_url: string | null; whatsapp: string | null;
+  bonos_enabled: boolean; is_published: boolean;
+};
+
+/** Las columnas de fecha son Date en Prisma; las interfaces públicas usan strings. */
+export function toEventRow(e: EventRecord): EventRow {
+  return {
+    ...e,
+    start_date: e.start_date ? e.start_date.toISOString().slice(0, 10) : null,
+    end_date: e.end_date ? e.end_date.toISOString().slice(0, 10) : null,
+  };
+}
+
+/** Lectura pública (solo eventos publicados). Nunca rompe el render si falla. */
 export async function getEventBySlug(slug: string): Promise<EventRow | null> {
   if (DEMO) return demo.events.find((e) => e.slug === slug) ?? null;
   try {
-    const { data } = await createPublicClient().from('events').select('*').eq('slug', slug).eq('is_published', true).maybeSingle();
-    return (data as EventRow) ?? null;
+    const e = await prisma.events.findFirst({ where: { slug, is_published: true } });
+    return e ? toEventRow(e) : null;
   } catch { return null; }
 }
 
@@ -18,26 +35,33 @@ export const loadEvent = cache(getEventBySlug);
 export async function listPublishedEvents(): Promise<EventRow[]> {
   if (DEMO) return demo.events;
   try {
-    const { data } = await createPublicClient().from('events').select('*').eq('is_published', true).order('start_date', { ascending: true });
-    return (data as EventRow[]) ?? [];
+    const events = await prisma.events.findMany({ where: { is_published: true }, orderBy: { start_date: 'asc' } });
+    return events.map(toEventRow);
   } catch { return []; }
 }
 
 export async function getEventContent(eventId: string) {
   if (DEMO) return demo.content[eventId] ?? { gallery: [], schedule: [], stalls: [], ads: [], bonos: [] };
-  const db = createPublicClient();
   const [gallery, schedule, stalls, ads, bonos] = await Promise.all([
-    db.from('gallery_images').select('id,image_url,caption').eq('event_id', eventId).order('sort_order').order('created_at'),
-    db.from('schedule_items').select('*').eq('event_id', eventId).order('starts_at'),
-    db.from('food_stalls').select('*').eq('event_id', eventId).order('number'),
-    db.from('ads').select('id,business_name,image_url,link_url,description').eq('event_id', eventId).order('sort_order'),
-    db.from('bono_types').select('id,name,description,amount').eq('event_id', eventId).order('amount'),
+    prisma.gallery_images.findMany({
+      where: { event_id: eventId }, orderBy: [{ sort_order: 'asc' }, { created_at: 'asc' }],
+      select: { id: true, image_url: true, caption: true },
+    }),
+    prisma.schedule_items.findMany({ where: { event_id: eventId }, orderBy: { starts_at: 'asc' } }),
+    prisma.food_stalls.findMany({ where: { event_id: eventId }, orderBy: { number: 'asc' } }),
+    prisma.ads.findMany({
+      where: { event_id: eventId }, orderBy: { sort_order: 'asc' },
+      select: { id: true, business_name: true, image_url: true, link_url: true, description: true },
+    }),
+    prisma.bono_types.findMany({ where: { event_id: eventId }, orderBy: { amount: 'asc' } }),
   ]);
   return {
-    gallery: (gallery.data ?? []) as GalleryImage[],
-    schedule: (schedule.data ?? []) as ScheduleItem[],
-    stalls: (stalls.data ?? []) as FoodStall[],
-    ads: (ads.data ?? []) as Ad[],
-    bonos: (bonos.data ?? []) as BonoType[],
+    gallery: gallery as GalleryImage[],
+    schedule: schedule.map((s) => ({
+      ...s, starts_at: s.starts_at.toISOString(), ends_at: s.ends_at ? s.ends_at.toISOString() : null,
+    })) as ScheduleItem[],
+    stalls: stalls as FoodStall[],
+    ads: ads as Ad[],
+    bonos: bonos.map((b) => ({ ...b, amount: Number(b.amount) })) as BonoType[],
   };
 }

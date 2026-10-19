@@ -1,18 +1,17 @@
 import Link from 'next/link';
 import { requireSuperAdmin } from '@/lib/auth';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { prisma } from '@/lib/db';
 import Flash from '@/components/admin/Flash';
 import { addMembership, createUser, deleteUser, removeMembership } from '../actions';
 
 export default async function Users({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
   const { user } = await requireSuperAdmin();
-  const sp = await searchParams;
-  const db = createAdminClient(); // autorizado: requireSuperAdmin() ya validó el rol
+  const sp = await searchParams; // autorizado: requireSuperAdmin() ya validó el rol
 
-  const [{ data: events }, { data: profiles }, { data: members }] = await Promise.all([
-    db.from('events').select('id,name').order('name'),
-    db.from('profiles').select('id,email,full_name,role,created_at').order('created_at'),
-    db.from('event_members').select('user_id,event_id,role'),
+  const [events, profiles, members] = await Promise.all([
+    prisma.events.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+    prisma.users.findMany({ select: { id: true, email: true, full_name: true, role: true, created_at: true }, orderBy: { created_at: 'asc' } }),
+    prisma.event_members.findMany({ select: { user_id: true, event_id: true, role: true } }),
   ]);
 
   return (
@@ -28,16 +27,16 @@ export default async function Users({ searchParams }: { searchParams: Promise<{ 
           <div><label className="label" htmlFor="password">Contraseña inicial (mín. 12)</label><input id="password" name="password" type="password" required minLength={12} autoComplete="new-password" className="input" /></div>
           <div><label className="label" htmlFor="role">Rol en los eventos</label><select id="role" name="role" className="input"><option value="editor">Editor</option><option value="admin">Administrador</option></select></div>
           <fieldset className="sm:col-span-2"><legend className="label">Eventos a los que accede</legend>
-            <div className="flex flex-wrap gap-4">{events?.map((e) => <label key={e.id} className="flex items-center gap-2 text-sm"><input type="checkbox" name="events" value={e.id} />{e.name}</label>)}</div>
+            <div className="flex flex-wrap gap-4">{events.map((e) => <label key={e.id} className="flex items-center gap-2 text-sm"><input type="checkbox" name="events" value={e.id} />{e.name}</label>)}</div>
           </fieldset>
           <div className="sm:col-span-2"><button className="btn">Crear usuario</button></div>
         </form>
       </details>
 
       <ul className="space-y-3">
-        {profiles?.map((p) => {
-          const mine = members?.filter((m) => m.user_id === p.id) ?? [];
-          const free = events?.filter((e) => !mine.some((m) => m.event_id === e.id)) ?? [];
+        {profiles.map((p) => {
+          const mine = members.filter((m) => m.user_id === p.id) ?? [];
+          const free = events.filter((e) => !mine.some((m) => m.event_id === e.id)) ?? [];
           return (
             <li key={p.id} className="card space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -51,7 +50,7 @@ export default async function Users({ searchParams }: { searchParams: Promise<{ 
                   <li key={m.event_id}>
                     <form action={removeMembership} className="flex items-center gap-1 rounded-full bg-stone-100 py-1 pl-3 pr-1 text-sm">
                       <input type="hidden" name="user_id" value={p.id} /><input type="hidden" name="event_id" value={m.event_id} />
-                      {events?.find((e) => e.id === m.event_id)?.name} <span className="text-xs text-stone-500">({m.role})</span>
+                      {events.find((e) => e.id === m.event_id)?.name} <span className="text-xs text-stone-500">({m.role})</span>
                       <button aria-label="Quitar acceso" className="rounded-full px-2 text-stone-500 hover:bg-stone-200">✕</button>
                     </form>
                   </li>

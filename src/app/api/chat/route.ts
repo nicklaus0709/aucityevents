@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { DEMO, demo } from '@/lib/demo-data';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { prisma } from '@/lib/db';
 import { getClientIp, isSameOrigin, json, rateLimit } from '@/lib/security';
 import { formatDateTime } from '@/lib/utils';
 
@@ -17,26 +17,30 @@ export async function POST(req: Request) {
   const { slug, message, history } = parsed.data;
 
   if (DEMO) {
-    const sch = (demo.content[demo.events.find((e) => e.slug === slug)?.id ?? ''] ?? demo.content['demo-navidad']).schedule.map((s) => `- ${formatDateTime(s.starts_at)}: ${s.artist}`).join('\n');
-    const st = (demo.content[demo.events.find((e) => e.slug === slug)?.id ?? ''] ?? demo.content['demo-navidad']).stalls.map((s) => `- Puesto ${s.number} "${s.name}": ${s.products.join(', ')}`).join('\n');
+    const c = demo.content[demo.events.find((e) => e.slug === slug)?.id ?? ''] ?? demo.content['demo-navidad'];
+    const sch = c.schedule.map((s) => `- ${formatDateTime(s.starts_at)}: ${s.artist}`).join('\n');
+    const st = c.stalls.map((s) => `- Puesto ${s.number} "${s.name}": ${s.products.join(', ')}`).join('\n');
     return json({ reply: ruleBasedReply(message, sch, st, null) });
   }
   if (!(await rateLimit(`chat:${getClientIp(req.headers)}`, 20, 600))) {
     return json({ reply: 'Estás escribiendo muy rápido, probá en unos minutos 🙂' }, 429);
   }
 
-  const db = createAdminClient();
-  const { data: event } = await db.from('events').select('id,name,description,location,start_date,end_date,whatsapp,bonos_enabled').eq('slug', slug).eq('is_published', true).maybeSingle();
+  const event = await prisma.events.findFirst({
+    where: { slug, is_published: true },
+    select: { id: true, name: true, description: true, location: true, start_date: true, end_date: true, whatsapp: true, bonos_enabled: true },
+  });
   if (!event) return json({ error: 'Evento no encontrado' }, 404);
 
-  const [{ data: schedule }, { data: stalls }] = await Promise.all([
-    db.from('schedule_items').select('artist,stage,starts_at').eq('event_id', event.id).order('starts_at'),
-    db.from('food_stalls').select('number,name,products').eq('event_id', event.id).order('number'),
+  const [schedule, stalls] = await Promise.all([
+    prisma.schedule_items.findMany({ where: { event_id: event.id }, orderBy: { starts_at: 'asc' } }),
+    prisma.food_stalls.findMany({ where: { event_id: event.id }, orderBy: { number: 'asc' } }),
   ]);
 
-  const scheduleText = (schedule ?? []).map((s) => `- ${formatDateTime(s.starts_at)}: ${s.artist}${s.stage ? ` (${s.stage})` : ''}`).join('\n') || 'Aún no hay grilla cargada.';
-  const stallsText = (stalls ?? []).map((s) => `- Puesto ${s.number} "${s.name}": ${(s.products ?? []).join(', ') || 'sin detalle'}`).join('\n') || 'Aún no hay puestos cargados.';
-  const context = `Evento: ${event.name}\nLugar: ${event.location ?? 'a confirmar'}\nFechas: ${event.start_date ?? '?'} al ${event.end_date ?? '?'}\n${event.description ?? ''}\n\nGRILLA:\n${scheduleText}\n\nGASTRONOMÍA:\n${stallsText}\n\nBonos de colaboración: ${event.bonos_enabled ? 'se pueden comprar en la sección Bonos' : 'no disponibles'}.`;
+  const scheduleText = schedule.map((s) => `- ${formatDateTime(s.starts_at.toISOString())}: ${s.artist}${s.stage ? ` (${s.stage})` : ''}`).join('\n') || 'Aún no hay grilla cargada.';
+  const stallsText = stalls.map((s) => `- Puesto ${s.number} "${s.name}": ${(s.products ?? []).join(', ') || 'sin detalle'}`).join('\n') || 'Aún no hay puestos cargados.';
+  const dates = `${event.start_date ? event.start_date.toISOString().slice(0, 10) : '?'} al ${event.end_date ? event.end_date.toISOString().slice(0, 10) : '?'}`;
+  const context = `Evento: ${event.name}\nLugar: ${event.location ?? 'a confirmar'}\nFechas: ${dates}\n${event.description ?? ''}\n\nGRILLA:\n${scheduleText}\n\nGASTRONOMÍA:\n${stallsText}\n\nBonos de colaboración: ${event.bonos_enabled ? 'se pueden comprar en la sección Bonos' : 'no disponibles'}.`;
 
   let reply: string | null = null;
   if (process.env.ANTHROPIC_API_KEY) {

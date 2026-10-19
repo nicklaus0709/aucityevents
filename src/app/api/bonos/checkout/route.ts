@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { DEMO } from '@/lib/demo-data';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { prisma } from '@/lib/db';
 import { generateBonoCode, getClientIp, isSameOrigin, json, rateLimit } from '@/lib/security';
 import { SITE_URL } from '@/lib/utils';
 
@@ -26,20 +26,25 @@ export async function POST(req: Request) {
   }
   if (!process.env.MP_ACCESS_TOKEN) return json({ error: 'Pagos no configurados' }, 503);
 
-  const db = createAdminClient();
-  const { data: event } = await db.from('events').select('id,name,slug,bonos_enabled').eq('slug', d.slug).eq('is_published', true).maybeSingle();
-  if (!event?.bonos_enabled) return json({ error: 'Bonos no disponibles' }, 404);
+  const event = await prisma.events.findUnique({
+    where: { slug: d.slug }, select: { id: true, name: true, slug: true, bonos_enabled: true, is_published: true },
+  });
+  if (!event?.bonos_enabled || !event.is_published) return json({ error: 'Bonos no disponibles' }, 404);
 
   // El precio SIEMPRE sale de la base de datos, nunca del cliente.
-  const { data: bono } = await db.from('bono_types').select('id,name,amount').eq('id', d.bonoTypeId).eq('event_id', event.id).eq('is_active', true).maybeSingle();
+  const bono = await prisma.bono_types.findFirst({
+    where: { id: d.bonoTypeId, event_id: event.id, is_active: true }, select: { id: true, name: true, amount: true },
+  });
   if (!bono) return json({ error: 'Bono no disponible' }, 404);
 
   const amount = Number(bono.amount) * d.quantity;
-  const { data: purchase, error } = await db.from('bono_purchases').insert({
-    event_id: event.id, bono_type_id: bono.id, code: generateBonoCode(),
-    buyer_name: d.name, buyer_email: d.email, buyer_phone: d.phone || null, quantity: d.quantity, amount,
-  }).select('id').single();
-  if (error || !purchase) return json({ error: 'No pudimos iniciar la compra' }, 500);
+  const purchase = await prisma.bono_purchases.create({
+    data: {
+      event_id: event.id, bono_type_id: bono.id, code: generateBonoCode(),
+      buyer_name: d.name, buyer_email: d.email, buyer_phone: d.phone || null, quantity: d.quantity, amount,
+    },
+    select: { id: true },
+  });
 
   const back = `${SITE_URL}/e/${event.slug}/bonos/resultado?ref=${purchase.id}`;
   const mp = await fetch('https://api.mercadopago.com/checkout/preferences', {
@@ -58,10 +63,10 @@ export async function POST(req: Request) {
   }).catch(() => null);
 
   if (!mp?.ok) {
-    await db.from('bono_purchases').update({ status: 'cancelled' }).eq('id', purchase.id);
+    await prisma.bono_purchases.update({ where: { id: purchase.id }, data: { status: 'cancelled' } });
     return json({ error: 'No pudimos conectar con Mercado Pago' }, 502);
   }
   const pref = await mp.json();
-  await db.from('bono_purchases').update({ mp_preference_id: pref.id }).eq('id', purchase.id);
+  await prisma.bono_purchases.update({ where: { id: purchase.id }, data: { mp_preference_id: pref.id } });
   return json({ url: pref.init_point });
 }

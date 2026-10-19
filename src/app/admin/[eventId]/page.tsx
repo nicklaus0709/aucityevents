@@ -1,27 +1,26 @@
 import { requireEventAccess } from '@/lib/auth';
+import { prisma } from '@/lib/db';
 import { formatMoney } from '@/lib/utils';
 
 export default async function Dashboard({ params }: { params: Promise<{ eventId: string }> }) {
   const { eventId } = await params;
-  const { supabase, event } = await requireEventAccess(eventId);
+  const { event } = await requireEventAccess(eventId);
 
-  const count = async (table: string, extra?: (q: any) => any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
-    let q = supabase.from(table).select('id', { count: 'exact', head: true }).eq('event_id', eventId);
-    if (extra) q = extra(q);
-    return (await q).count ?? 0;
-  };
-  const [shows, stalls, ads, photos, newMsgs] = await Promise.all([
-    count('schedule_items'), count('food_stalls'), count('ads'), count('gallery_images'),
-    count('contact_messages', (q) => q.eq('status', 'nuevo')),
+  const [shows, stalls, ads, photos, newMsgs, sales] = await Promise.all([
+    prisma.schedule_items.count({ where: { event_id: eventId } }),
+    prisma.food_stalls.count({ where: { event_id: eventId } }),
+    prisma.ads.count({ where: { event_id: eventId } }),
+    prisma.gallery_images.count({ where: { event_id: eventId } }),
+    prisma.contact_messages.count({ where: { event_id: eventId, status: 'nuevo' } }),
+    prisma.bono_purchases.findMany({ where: { event_id: eventId, status: 'approved' }, select: { amount: true, redeemed_at: true } }),
   ]);
-  const { data: sales } = await supabase.from('bono_purchases').select('amount,quantity,redeemed_at').eq('event_id', eventId).eq('status', 'approved');
-  const revenue = (sales ?? []).reduce((a, s) => a + Number(s.amount), 0);
+  const revenue = sales.reduce((a, s) => a + Number(s.amount), 0);
 
   const stats = [
     { label: 'Shows en grilla', value: shows }, { label: 'Puestos gastronómicos', value: stalls },
     { label: 'Publicidades', value: ads }, { label: 'Fotos', value: photos },
-    { label: 'Mensajes nuevos', value: newMsgs }, { label: 'Bonos vendidos', value: sales?.length ?? 0 },
-    { label: 'Recaudado', value: formatMoney(revenue) }, { label: 'Bonos canjeados', value: (sales ?? []).filter((s) => s.redeemed_at).length },
+    { label: 'Mensajes nuevos', value: newMsgs }, { label: 'Bonos vendidos', value: sales.length },
+    { label: 'Recaudado', value: formatMoney(revenue) }, { label: 'Bonos canjeados', value: sales.filter((s) => s.redeemed_at).length },
   ];
   return (
     <div className="space-y-4">

@@ -1,13 +1,28 @@
 import 'server-only';
+import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
-import { createClient } from '@/lib/supabase/server';
+import { prisma } from '@/lib/db';
+import { SESSION_COOKIE, verifySessionToken } from '@/lib/session';
 
+type SessionUser = { id: string; email: string | null };
+
+/** Lee la sesión del cookie y verifica la firma; null si no hay sesión válida. */
+export async function getSessionUser(): Promise<SessionUser | null> {
+  const store = await cookies();
+  const userId = verifySessionToken(store.get(SESSION_COOKIE)?.value);
+  if (!userId) return null;
+  return prisma.users.findUnique({ where: { id: userId }, select: { id: true, email: true } });
+}
+
+/** Requiere sesión válida (redirige al login si no la hay). */
 export async function requireUser() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) redirect('/admin/login');
-  const { data: profile } = await supabase.from('profiles').select('role,full_name,email').eq('id', user.id).single();
-  return { supabase, user, profile, isSuper: profile?.role === 'super_admin' };
+  const profile = await prisma.users.findUnique({
+    where: { id: user.id }, select: { id: true, email: true, full_name: true, role: true },
+  });
+  if (!profile) redirect('/admin/login');
+  return { user, profile, isSuper: profile.role === 'super_admin' };
 }
 
 export async function requireSuperAdmin() {
@@ -16,13 +31,16 @@ export async function requireSuperAdmin() {
   return ctx;
 }
 
-/** Verifica que el usuario pueda editar el evento (autorización real = RLS + esta comprobación). */
+/** Autorización reemplaza al RLS de Supabase: super admin, o miembro del evento. */
 export async function requireEventAccess(eventId: string) {
   const ctx = await requireUser();
   if (!/^[0-9a-f-]{36}$/i.test(eventId)) redirect('/admin');
-  const { data: allowed } = await ctx.supabase.rpc('can_edit_event', { eid: eventId });
-  if (!allowed) redirect('/admin');
-  const { data: event } = await ctx.supabase.from('events').select('*').eq('id', eventId).single();
-  if (!event) redirect('/admin');
-  return { ...ctx, event: event as import('@/lib/types').EventRow };
+  const [event, allowed] = await Promise.all([
+    prisma.events.findUnique({ where: { id: eventId } }),
+    ctx.isSuper
+      ? Promise.resolve(true)
+      : prisma.event_members.findFirst({ where: { event_id: eventId, user_id: ctx.user.id } }).then(Boolean),
+  ]);
+  if (!allowed || !event) redirect('/admin');
+  return { ...ctx, event };
 }

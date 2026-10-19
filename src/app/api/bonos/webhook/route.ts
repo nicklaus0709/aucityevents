@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'crypto';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { prisma } from '@/lib/db';
 
 /**
  * Webhook de Mercado Pago. Seguridad:
@@ -27,7 +27,7 @@ function validSignature(req: Request, dataId: string) {
 }
 
 export async function POST(req: Request) {
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL) return new Response('demo', { status: 503 });
+  if (!process.env.DATABASE_URL) return new Response('demo', { status: 503 });
   const url = new URL(req.url);
   const body = await req.json().catch(() => ({}));
   const type = url.searchParams.get('type') ?? url.searchParams.get('topic') ?? body?.type;
@@ -43,8 +43,9 @@ export async function POST(req: Request) {
   if (!res?.ok) return new Response('retry', { status: 502 }); // MP reintenta
   const payment = await res.json();
 
-  const db = createAdminClient();
-  const { data: purchase } = await db.from('bono_purchases').select('id,amount,status').eq('id', payment.external_reference).maybeSingle();
+  const ref = String(payment.external_reference ?? '');
+  if (!/^[0-9a-f-]{36}$/i.test(ref)) return new Response('unknown reference', { status: 200 });
+  const purchase = await prisma.bono_purchases.findUnique({ where: { id: ref }, select: { id: true, amount: true, status: true } });
   if (!purchase) return new Response('unknown reference', { status: 200 });
 
   let status = STATUS_MAP[payment.status] ?? 'pending';
@@ -54,6 +55,6 @@ export async function POST(req: Request) {
   // Un pago aprobado nunca vuelve a pendiente por una notificación tardía
   if (purchase.status === 'approved' && status === 'pending') return new Response('ok', { status: 200 });
 
-  await db.from('bono_purchases').update({ status, mp_payment_id: String(payment.id) }).eq('id', purchase.id);
+  await prisma.bono_purchases.update({ where: { id: purchase.id }, data: { status, mp_payment_id: String(payment.id) } });
   return new Response('ok', { status: 200 });
 }

@@ -1,4 +1,5 @@
 import { requireEventAccess } from '@/lib/auth';
+import { prisma } from '@/lib/db';
 import { deleteMessage, setMessageStatus } from '../../actions';
 import { formatDateTime } from '@/lib/utils';
 
@@ -6,20 +7,22 @@ const TYPE_LABEL: Record<string, string> = { artista: 'Artista', gastronomico: '
 
 export default async function Messages({ params }: { params: Promise<{ eventId: string }> }) {
   const { eventId } = await params;
-  const { supabase } = await requireEventAccess(eventId);
-  const { data: msgs } = await supabase.from('contact_messages').select('*').eq('event_id', eventId).order('created_at', { ascending: false }).limit(200);
+  await requireEventAccess(eventId);
+  const msgs = await prisma.contact_messages.findMany({
+    where: { event_id: eventId }, orderBy: { created_at: 'desc' }, take: 200,
+  });
 
   return (
     <div className="space-y-4">
       <h2 className="text-xl">Mensajes de contacto</h2>
-      {msgs?.length === 0 && <p className="text-stone-500">No hay mensajes.</p>}
-      {msgs?.map((m) => {
+      {msgs.length === 0 && <p className="text-stone-500">No hay mensajes.</p>}
+      {msgs.map((m) => {
         const digits = (m.phone ?? '').replace(/\D/g, '');
         return (
           <article key={m.id} className="card space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="font-semibold">{m.name} <span className="ml-2 rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium">{TYPE_LABEL[m.type]}</span></p>
-              <time className="text-xs text-stone-500">{formatDateTime(m.created_at)}</time>
+              <time className="text-xs text-stone-500">{formatDateTime(m.created_at.toISOString())}</time>
             </div>
             {/* Texto plano: React escapa el contenido enviado por el público */}
             <p className="whitespace-pre-line text-sm">{m.message}</p>

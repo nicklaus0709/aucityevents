@@ -1,7 +1,7 @@
 import QRCode from 'qrcode';
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { createAdminClient } from '@/lib/supabase/admin';
+import { prisma } from '@/lib/db';
 import { formatMoney } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
@@ -13,14 +13,14 @@ export default async function BonoResult({ params, searchParams }: { params: Pro
   const valid = ref && /^[0-9a-f-]{36}$/i.test(ref);
 
   // La referencia es un UUID aleatorio no adivinable; solo se muestran datos mínimos.
-  const { data: p } = valid
-    ? await createAdminClient().from('bono_purchases').select('code,status,quantity,amount,buyer_name,bono_types(name)').eq('id', ref).maybeSingle()
-    : { data: null };
+  const p = valid
+    ? await prisma.bono_purchases.findUnique({ where: { id: ref }, include: { bono_type: { select: { name: true } } } })
+    : null;
 
   if (!p) return <section className="section text-center"><h1 className="text-2xl">No encontramos tu compra</h1><Link className="btn mt-6" href={`/e/${slug}`}>Volver al inicio</Link></section>;
 
   const qr = p.status === 'approved' ? await QRCode.toDataURL(p.code, { margin: 1, width: 280 }) : null;
-  const bonoName = (p.bono_types as unknown as { name: string } | null)?.name;
+  const bonoName = p.bono_type?.name;
 
   return (
     <section className="section max-w-xl text-center">
