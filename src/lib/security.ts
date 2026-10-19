@@ -24,7 +24,18 @@ export function isSameOrigin(headers: Headers) {
   const origin = headers.get('origin');
   const host = headers.get('x-forwarded-host') || headers.get('host');
   if (!origin || !host) return false;
-  try { return new URL(origin).host === host; } catch { return false; }
+  try {
+    if (new URL(origin).host === host) return true;
+    // Base44 preview only: el proxy entrega el sitio en un host público distinto
+    // del Host interno; se acepta ese origen solo cuando corre en modo preview.
+    // Con el flag ausente o con otro valor, el chequeo queda como siempre.
+    if (
+      process.env.BASE44_PREVIEW_MODE === '1' &&
+      process.env.BASE44_PUBLIC_HOST_SUFFIX &&
+      new URL(origin).host === `3000-${process.env.BASE44_PUBLIC_HOST_SUFFIX}`
+    ) return true;
+    return false;
+  } catch { return false; }
 }
 
 const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // sin caracteres ambiguos

@@ -24,7 +24,11 @@ export async function POST(req: Request) {
   if (!(await rateLimit(`checkout:${getClientIp(req.headers)}`, 10, 3600))) {
     return json({ error: 'Demasiados intentos. Probá más tarde.' }, 429);
   }
-  if (!process.env.MP_ACCESS_TOKEN) return json({ error: 'Pagos no configurados' }, 503);
+  // Base44 preview only: checkout simulado para poder probar el flujo completo sin
+  // credenciales de Mercado Pago. Con el flag ausente o con otro valor, la
+  // creación del bono sigue el flujo real (503 si no hay token configurado).
+  const simulatePayment = process.env.BASE44_PREVIEW_MODE === '1' && !process.env.MP_ACCESS_TOKEN;
+  if (!process.env.MP_ACCESS_TOKEN && !simulatePayment) return json({ error: 'Pagos no configurados' }, 503);
 
   const event = await prisma.events.findUnique({
     where: { slug: d.slug }, select: { id: true, name: true, slug: true, bonos_enabled: true, is_published: true },
@@ -47,6 +51,13 @@ export async function POST(req: Request) {
   });
 
   const back = `${SITE_URL}/e/${event.slug}/bonos/resultado?ref=${purchase.id}`;
+
+  if (simulatePayment) {
+    // Pago simulado: se acredita directo (equivalente al webhook de MP aprobado).
+    // URL relativa: sirve en cualquier origen (el preview no corre en localhost).
+    await prisma.bono_purchases.update({ where: { id: purchase.id }, data: { status: 'approved', mp_payment_id: `simulado-${purchase.id}` } });
+    return json({ url: new URL(back).pathname + new URL(back).search });
+  }
   const mp = await fetch('https://api.mercadopago.com/checkout/preferences', {
     method: 'POST',
     headers: { 'content-type': 'application/json', Authorization: `Bearer ${process.env.MP_ACCESS_TOKEN}`, 'X-Idempotency-Key': purchase.id },
