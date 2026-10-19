@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { DEMO } from '@/lib/base44';
+import { base44, DEMO } from '@/lib/base44';
 import Flash from '@/components/admin/Flash';
 
 export default function Login() {
@@ -34,6 +34,9 @@ export default function Login() {
         <div><label className="label" htmlFor="email">Email</label><input id="email" name="email" type="email" required autoComplete="username" className="input" /></div>
         <div><label className="label" htmlFor="password">Contraseña</label><input id="password" name="password" type="password" required autoComplete="current-password" className="input" /></div>
         <button className="btn w-full" disabled={busy}>{busy ? 'Ingresando…' : 'Entrar'}</button>
+        <div className="relative my-1 text-center text-xs text-stone-400"><span className="bg-white px-2">o</span></div>
+        <button type="button" className="btn-secondary w-full" onClick={() => base44.auth.redirectToLogin(`${window.location.origin}/admin`)}>Ingresar con la página de Base44</button>
+        <p className="text-center text-xs text-stone-500">Usala la primera vez, para registrarte o recuperar tu contraseña.</p>
         <p className="text-center text-sm"><Link to="/" className="text-stone-500 hover:underline">← Volver al sitio</Link></p>
       </form>
     </div>
